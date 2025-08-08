@@ -20,4 +20,4 @@ services:
       - key: MONGO_URI
         sync: false
       - key: DB_NAME
-        value: attendance_system
+        value: course_correct
