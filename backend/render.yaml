@@ -10,10 +10,14 @@ services:
       - key: NODE_ENV
         value: production
       - key: ALLOWED_ORIGINS
-        value: https://your-frontend-domain.com,http://localhost:3000
+        value: https://your-frontend-domain.com,http://localhost:3000,https://*.vercel.app
       - key: WS_HEARTBEAT_INTERVAL
         value: 25000
       - key: WS_HEARTBEAT_TIMEOUT
         value: 5000
       - key: LOG_LEVEL
-        value: info 
+        value: info
+      - key: MONGO_URI
+        sync: false
+      - key: DB_NAME
+        value: attendance_system
