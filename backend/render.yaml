@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: attendance-system-backend
+    env: node
+    plan: free
+    rootDirectory: backend
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: ALLOWED_ORIGINS
+        value: https://your-frontend-domain.com,http://localhost:3000
+      - key: WS_HEARTBEAT_INTERVAL
+        value: 25000
+      - key: WS_HEARTBEAT_TIMEOUT
+        value: 5000
+      - key: LOG_LEVEL
+        value: info 

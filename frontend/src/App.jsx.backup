@@ -1,0 +1,62 @@
+// src/App.jsx
+import { useState } from "react";
+import { Routes, Route, useLocation, useNavigate } from "react-router-dom";
+import Sidebar from "./components/Sidebar";
+import Topbar from "./components/Topbar";
+import Dashboard from "./pages/Dashboard";
+import Report from "./pages/Report";
+import Settings from "./pages/Settings";
+import { SliceNameProvider } from "./context/SliceNameContext";
+import ManualAttendance from "./pages/ManualAttendance";
+import Geolocation from "./pages/Geolocation";
+
+function App() {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const monthNameToCode = {
+    January: "Jan",
+    February: "Feb",
+    March: "Mar",
+    April: "Apr",
+    May: "May",
+    June: "Jun",
+    July: "Jul",
+    August: "Aug",
+    September: "Sep",
+    October: "Oct",
+    November: "Nov",
+    December: "Dec",
+  };
+  const handlePieSliceClick = (params) => {
+    const fullMonthName = params.name;
+    const sliceName = monthNameToCode[fullMonthName];
+    if (sliceName) {
+      navigate("/report", { state: { sliceName } });
+    }
+  };
+
+  return (
+    <SliceNameProvider>
+      <div className="flex min-h-screen">
+        <Sidebar sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} collapsed={collapsed} setCollapsed={setCollapsed} />
+        <div className={`flex-1 flex flex-col p-4 space-y-4 transition-all duration-300 ${collapsed ? 'md:ml-10' : 'md:ml-46'}`}>
+          {location.pathname === '/' && <Topbar setSidebarOpen={setSidebarOpen} />}
+          <Routes>
+            <Route
+              path="/"
+              element={<Dashboard onEvents={{ click: handlePieSliceClick }} />}
+            />
+            <Route path="/report" element={<Report />} />
+            <Route path="/settings" element={<Settings />} />
+            <Route path="/manual-attendance" element={<ManualAttendance />} />
+            <Route path="/geolocation" element={<Geolocation />} />
+          </Routes>
+        </div>
+      </div>
+    </SliceNameProvider>
+  );
+}
+
+export default App;
