@@ -10,7 +10,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: ALLOWED_ORIGINS
-        value: *
+        value: https://fyplecturer.vercel.app,http://localhost:3000,https://*.vercel.app
       - key: WS_HEARTBEAT_INTERVAL
         value: 25000
       - key: WS_HEARTBEAT_TIMEOUT
