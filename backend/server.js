@@ -16,6 +16,13 @@ const PORT = process.env.PORT || 5001;
 const NODE_ENV = process.env.NODE_ENV || "development";
 
 // CORS configuration for production
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.replace(/\s+/g, '').split(",").map(origin => origin.trim()).filter(origin => origin.length > 0)
+  : ["http://localhost:3000", "http://localhost:3001"];
+
+console.log("�� CORS Configuration:");
+console.log("📡 Raw ALLOWED_ORIGINS:", process.env.ALLOWED_ORIGINS);
+console.log("📡 Processed allowed origins:", allowedOrigins);
 
 app.use(
   cors({
