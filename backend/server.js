@@ -16,34 +16,31 @@ const PORT = process.env.PORT || 5001;
 const NODE_ENV = process.env.NODE_ENV || "development";
 
 // CORS configuration for production
-// CORS configuration for production
-const allowedOrigins = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.replace(/\s+/g, '').split(",").map(origin => origin.trim()).filter(origin => origin.length > 0)
-  : ["http://localhost:3000", "http://localhost:3001"];
-
-console.log("�� CORS Configuration:");
-console.log("📡 Raw ALLOWED_ORIGINS:", process.env.ALLOWED_ORIGINS);
-console.log("📡 Processed allowed origins:", allowedOrigins);
 
 app.use(
   cors({
     origin: function (origin, callback) {
-      // Allow requests with no origin (like mobile apps or Postman)
-      if (!origin) {
-        console.log("✅ Allowing request with no origin");
-        return callback(null, true);
-      }
-      
-      console.log("�� Checking origin:", origin);
-      console.log("�� Allowed origins:", allowedOrigins);
-      
-      // Check if origin is in allowed list
-      if (allowedOrigins.includes(origin)) {
-        console.log("✅ Origin allowed:", origin);
-        callback(null, true);
-      } else {
-        console.log("❌ Origin blocked:", origin);
-        callback(new Error("Not allowed by CORS"));
+      try {
+        // Allow requests with no origin (like mobile apps or Postman)
+        if (!origin) {
+          console.log("✅ Allowing request with no origin");
+          return callback(null, true);
+        }
+        
+        console.log("�� Checking origin:", origin);
+        console.log("�� Allowed origins:", allowedOrigins);
+        
+        // Check if origin is in allowed list
+        if (allowedOrigins.includes(origin)) {
+          console.log("✅ Origin allowed:", origin);
+          callback(null, true);
+        } else {
+          console.log("❌ Origin blocked:", origin);
+          callback(new Error("Not allowed by CORS"));
+        }
+      } catch (error) {
+        console.error("❌ CORS Error:", error);
+        callback(new Error("CORS processing error"));
       }
     },
     credentials: true,
