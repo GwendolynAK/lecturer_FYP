@@ -20,7 +20,7 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.replace(/\s+/g, '').split(",").map(origin => origin.trim()).filter(origin => origin.length > 0)
   : ["http://localhost:3000", "http://localhost:3001"];
 
-console.log("�� CORS Configuration:");
+console.log("🔧 CORS Configuration:");
 console.log("📡 Raw ALLOWED_ORIGINS:", process.env.ALLOWED_ORIGINS);
 console.log("📡 Processed allowed origins:", allowedOrigins);
 
@@ -34,8 +34,8 @@ app.use(
           return callback(null, true);
         }
         
-        console.log("�� Checking origin:", origin);
-        console.log("�� Allowed origins:", allowedOrigins);
+        console.log("🔍 Checking origin:", origin);
+        console.log("📋 Allowed origins:", allowedOrigins);
         
         // Check if origin is in allowed list
         if (allowedOrigins.includes(origin)) {
