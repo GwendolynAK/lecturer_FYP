@@ -120,6 +120,11 @@ router.post('/login', async (req, res) => {
       });
     }
 
+    // Store previous login time before updating current login
+    if (user.lastLogin) {
+      user.previousLogin = user.lastLogin;
+    }
+    
     // Update last login
     user.lastLogin = new Date();
     await user.save();
@@ -148,6 +153,51 @@ router.post('/login', async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Server error during login.'
+    });
+  }
+});
+
+// GET /api/auth/user-details - Get user details including createdAt and lastLogin
+router.get('/user-details', async (req, res) => {
+  try {
+    // Get user ID from query parameter or request body
+    const { userId } = req.query;
+    
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        error: 'User ID is required.'
+      });
+    }
+
+    // Find user by ID
+    const user = await User.findById(userId).populate('lecturerId');
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found.'
+      });
+    }
+
+    res.json({
+      success: true,
+      user: {
+        id: user._id,
+        email: user.email,
+        lecturerId: user.lecturerId,
+        lecturerName: user.lecturerId?.name,
+        createdAt: user.createdAt,
+        lastLogin: user.lastLogin,
+        previousLogin: user.previousLogin,
+        isVerified: user.isVerified
+      }
+    });
+
+  } catch (err) {
+    console.error('Get user details error:', err);
+    res.status(500).json({
+      success: false,
+      error: 'Server error while fetching user details.'
     });
   }
 });
