@@ -32,6 +32,9 @@ const UserSchema = new mongoose.Schema({
   },
   lastLogin: {
     type: Date
+  },
+  previousLogin: {
+    type: Date
   }
 });
 
