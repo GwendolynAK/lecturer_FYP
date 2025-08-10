@@ -10,7 +10,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: ALLOWED_ORIGINS
-        value: https://fyplecturer.vercel.app,http://localhost:3000,https://*.vercel.app
+        value: https://attendance-system-frontend.onrender.com,http://localhost:3000,https://*.vercel.app,https://fyplecturer.vercel.app
       - key: WS_HEARTBEAT_INTERVAL
         value: 25000
       - key: WS_HEARTBEAT_TIMEOUT
@@ -20,4 +20,4 @@ services:
       - key: MONGO_URI
         sync: false
       - key: DB_NAME
-        value: course_correct
+        value: course_correct 
