@@ -1,7 +1,9 @@
 import express from 'express';
 import User from '../models/User.js';
 import Lecturer from '../models/Lecturer.js';
+import VerificationCode from '../models/VerificationCode.js';
 import { getLecturerProgramsAndCourses } from '../utils/lecturerDetails.js';
+import { sendVerificationEmail, sendPasswordResetEmail } from '../utils/emailService.js';
 
 const router = express.Router();
 
@@ -205,4 +207,231 @@ router.get('/user-details', async (req, res) => {
 // GET /api/auth/test
 router.get('/test', (req, res) => res.json({ message: 'Auth route works!' }));
 
-export default router; 
+// POST /api/auth/send-verification - Send email verification code
+router.post('/send-verification', async (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    // Validate email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Invalid email address' 
+      });
+    }
+    
+    // Check if user already exists
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(409).json({ 
+        success: false, 
+        error: 'Email already registered' 
+      });
+    }
+    
+    // Generate 6-digit verification code
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    
+    // Save verification code to database
+    await VerificationCode.create({
+      email,
+      code,
+      expiresAt
+    });
+    
+    // Send verification email
+    const emailSent = await sendVerificationEmail(email, code, 'Attendance System');
+    
+    if (!emailSent) {
+      return res.status(500).json({ 
+        success: false, 
+        error: 'Failed to send verification email' 
+      });
+    }
+    
+    res.json({ 
+      success: true, 
+      message: 'Verification code sent successfully' 
+    });
+    
+  } catch (error) {
+    console.error('Send verification error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Server error while sending verification code' 
+    });
+  }
+});
+
+// POST /api/auth/verify-code - Verify email verification code
+router.post('/verify-code', async (req, res) => {
+  try {
+    const { email, code } = req.body;
+    
+    if (!email || !code) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Email and verification code are required' 
+      });
+    }
+    
+    // Find verification code
+    const verificationCode = await VerificationCode.findOne({
+      email,
+      code,
+      used: false,
+      expiresAt: { $gt: new Date() }
+    });
+    
+    if (!verificationCode) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Invalid or expired verification code' 
+      });
+    }
+    
+    // Mark verification code as used
+    verificationCode.used = true;
+    await verificationCode.save();
+    
+    res.json({ 
+      success: true, 
+      message: 'Email verified successfully' 
+    });
+    
+  } catch (error) {
+    console.error('Verify code error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Server error while verifying code' 
+    });
+  }
+});
+
+// POST /api/auth/send-password-reset - Send password reset code
+router.post('/send-password-reset', async (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    // Validate email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Invalid email address' 
+      });
+    }
+    
+    // Check if user exists
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'User not found' 
+      });
+    }
+    
+    // Generate 6-digit reset code
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    
+    // Save reset code to database
+    await VerificationCode.create({
+      email,
+      code,
+      expiresAt
+    });
+    
+    // Send password reset email
+    const emailSent = await sendPasswordResetEmail(email, code, 'Attendance System');
+    
+    if (!emailSent) {
+      return res.status(500).json({ 
+        success: false, 
+        error: 'Failed to send password reset email' 
+      });
+    }
+    
+    res.json({ 
+      success: true, 
+      message: 'Password reset code sent successfully' 
+    });
+    
+  } catch (error) {
+    console.error('Send password reset error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Server error while sending password reset code' 
+    });
+  }
+});
+
+// POST /api/auth/verify-password-reset - Verify password reset code
+router.post('/verify-password-reset', async (req, res) => {
+  try {
+    const { email, code, newPasscode } = req.body;
+    
+    if (!email || !code || !newPasscode) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Email, verification code, and new passcode are required' 
+      });
+    }
+    
+    // Validate new passcode format (6 digits)
+    if (!/^\d{6}$/.test(newPasscode)) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Passcode must be exactly 6 digits' 
+      });
+    }
+    
+    // Find verification code
+    const verificationCode = await VerificationCode.findOne({
+      email,
+      code,
+      used: false,
+      expiresAt: { $gt: new Date() }
+    });
+    
+    if (!verificationCode) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Invalid or expired verification code' 
+      });
+    }
+    
+    // Find user and update passcode
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'User not found' 
+      });
+    }
+    
+    // Update user's passcode
+    user.passcode = newPasscode;
+    await user.save();
+    
+    // Mark verification code as used
+    verificationCode.used = true;
+    await verificationCode.save();
+    
+    res.json({ 
+      success: true, 
+      message: 'Password reset successfully' 
+    });
+    
+  } catch (error) {
+    console.error('Verify password reset error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Server error while resetting password' 
+    });
+  }
+});
+
+export default router;
