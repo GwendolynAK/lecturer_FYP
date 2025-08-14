@@ -242,7 +242,7 @@ router.post('/send-verification', async (req, res) => {
     });
     
     // Send verification email
-    const emailSent = await sendVerificationEmail(email, code, 'Attendance System');
+    const emailSent = await sendVerificationEmail(email, code, 'Course Correct');
     
     if (!emailSent) {
       return res.status(500).json({ 
@@ -345,7 +345,7 @@ router.post('/send-password-reset', async (req, res) => {
     });
     
     // Send password reset email
-    const emailSent = await sendPasswordResetEmail(email, code, 'Attendance System');
+    const emailSent = await sendPasswordResetEmail(email, code, 'Course Correct');
     
     if (!emailSent) {
       return res.status(500).json({ 
