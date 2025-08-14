@@ -1,7 +1,24 @@
 import sgMail from '@sendgrid/mail';
 
-// Initialize SendGrid with API key
-sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+// Initialize SendGrid when needed
+let isSendGridInitialized = false;
+
+const initializeSendGrid = () => {
+  if (isSendGridInitialized) return;
+  
+  const apiKey = process.env.SENDGRID_API_KEY;
+  console.log('🔍 Debug - API Key length:', apiKey ? apiKey.length : 'undefined');
+  console.log('🔍 Debug - API Key starts with SG.:', apiKey ? apiKey.startsWith('SG.') : 'undefined');
+  console.log('🔍 Debug - API Key first 10 chars:', apiKey ? apiKey.substring(0, 10) : 'undefined');
+
+  if (apiKey && apiKey.startsWith('SG.')) {
+    sgMail.setApiKey(apiKey);
+    console.log('✅ SendGrid API key configured successfully');
+    isSendGridInitialized = true;
+  } else {
+    console.warn('⚠️  SendGrid API key not properly configured. Email functionality will be disabled.');
+  }
+};
 
 /**
  * Send verification code email
@@ -10,7 +27,9 @@ sgMail.setApiKey(process.env.SENDGRID_API_KEY);
  * @param {string} appName - Application name
  * @returns {Promise<boolean>} - Success status
  */
-export const sendVerificationEmail = async (email, code, appName = 'Attendance System') => {
+export const sendVerificationEmail = async (email, code, appName = 'Course Correct') => {
+  initializeSendGrid();
+  
   try {
     const msg = {
       to: email,
@@ -140,7 +159,9 @@ export const sendVerificationEmail = async (email, code, appName = 'Attendance S
  * @param {string} appName - Application name
  * @returns {Promise<boolean>} - Success status
  */
-export const sendPasswordResetEmail = async (email, code, appName = 'Attendance System') => {
+export const sendPasswordResetEmail = async (email, code, appName = 'Course Correct') => {
+  initializeSendGrid();
+  
   try {
     const msg = {
       to: email,
