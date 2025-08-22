@@ -1,3 +1,4 @@
+// routes/students.js
 import express from 'express';
 import { MongoClient } from 'mongodb';
 
@@ -6,26 +7,12 @@ const router = express.Router();
 // MongoDB connection - use environment variables
 const MONGODB_URI = process.env.MONGODB_URI;
 const DATABASE_NAME = process.env.DB_NAME;
-const COLLECTION_NAME = process.env.COLLECTION_NAME || 'studentData';
-
-// Add debugging
-console.log('🔍 Environment Variables Check:');
-console.log('   MONGODB_URI:', MONGODB_URI ? '✅ Set' : '❌ Not set');
-console.log('   DB_NAME:', DATABASE_NAME ? '✅ Set' : '❌ Not set');
-console.log('   COLLECTION_NAME:', COLLECTION_NAME ? '✅ Set' : '❌ Not set');
+const COLLECTION_NAME = 'studentData';
 
 let client = null;
 
 async function getMongoClient() {
   if (!client) {
-    // Add validation
-    if (!MONGODB_URI) {
-      throw new Error('MONGODB_URI environment variable is not set');
-    }
-    if (!DATABASE_NAME) {
-      throw new Error('DB_NAME environment variable is not set');
-    }
-    
     client = new MongoClient(MONGODB_URI);
     await client.connect();
   }
