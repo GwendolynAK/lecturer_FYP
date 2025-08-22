@@ -7,7 +7,7 @@ const router = express.Router();
 // MongoDB connection - use environment variables
 const MONGODB_URI = process.env.MONGODB_URI;
 const DATABASE_NAME = process.env.DB_NAME;
-const COLLECTION_NAME = 'studentData';
+const COLLECTION_NAME = process.env.COLLECTION_NAME || 'studentData';
 
 let client = null;
 
