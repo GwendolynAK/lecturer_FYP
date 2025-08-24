@@ -56,7 +56,7 @@ router.post('/validate', async (req, res) => {
     } else {
       res.json({ 
         success: false, 
-        message: 'Student information not found. Please check your details.' 
+        message: 'Student information not found. Please check your details.'
       });
     }
   } catch (error) {
@@ -184,16 +184,15 @@ router.post('/register', async (req, res) => {
       });
     }
     
-    // Hash BOTH password AND passcode for security
+    // Hash the password for security
     const saltRounds = 10;
     const hashedPassword = await bcrypt.hash(password, saltRounds);
-    const hashedPasscode = await bcrypt.hash(passcode, saltRounds); // ADD THIS LINE
     
     // Create new user in users collection
     const newUser = {
       email,
       password: hashedPassword, // Use hashed password
-      passcode: hashedPasscode, // Use hashed passcode instead of plain text
+      passcode,
       studentId: indexNumber,
       fullName,
       level,
@@ -213,7 +212,7 @@ router.post('/register', async (req, res) => {
       user: {
         id: newUser._id,
         email: newUser.email,
-        studentId: newUser._id,
+        studentId: newUser.studentId,
         fullName: newUser.fullName,
         level: newUser.level,
         program: newUser.program
