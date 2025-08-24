@@ -1,7 +1,7 @@
 // routes/students.js
 import express from 'express';
 import { MongoClient } from 'mongodb';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 
 const router = express.Router();
 
