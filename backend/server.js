@@ -8,6 +8,7 @@ import healthRoutes from "./routes/health.js";
 import lecturerRouter from './routes/lecturer.js';
 import authRouter from './routes/auth.js';
 import studentsRouter from './routes/students.js';
+import studentAuthRouter from './routes/studentAuth.js';
 
 // Load environment variables
 dotenv.config();
@@ -250,6 +251,7 @@ app.get("/api/admin/data", (req, res) => {
 app.use('/api/lecturer', lecturerRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/students', studentsRouter);
+app.use('/api/student-auth', studentAuthRouter);
 app.use("/api/catalog", catalogRoutes);
 app.use("/api/health", healthRoutes);
 
