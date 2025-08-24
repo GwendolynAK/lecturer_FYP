@@ -67,8 +67,17 @@ UserSchema.methods.comparePassword = async function(candidatePassword) {
 };
 
 // Method to compare passcode
-UserSchema.methods.comparePasscode = async function(candidatePasscode) {
+/* UserSchema.methods.comparePasscode = async function(candidatePasscode) {
   return bcrypt.compare(candidatePasscode, this.passcode);
-};
+}; */
 
-export default mongoose.model('User', UserSchema); 
+// In your User model
+userSchema.methods.comparePasscode = async function(candidatePasscode) {
+  try {
+    return await bcrypt.compare(candidatePasscode, this.passcode);
+  } catch (error) {
+    console.error('Error comparing passcode:', error);
+    return false;
+  }
+};
+export default mongoose.model('User', UserSchema);
