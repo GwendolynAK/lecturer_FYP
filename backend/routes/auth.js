@@ -434,4 +434,95 @@ router.post('/verify-password-reset', async (req, res) => {
   }
 });
 
+// POST /api/auth/login - User login with email, password, and passcode (two-step)
+router.post('/login', async (req, res) => {
+  try {
+    console.log('Login attempt received:', { 
+      email: req.body.email, 
+      hasPassword: !!req.body.password,
+      hasPasscode: !!req.body.passcode 
+    });
+    
+    const { email, password, passcode } = req.body;
+
+    if (!email || !password) {
+      console.log('Missing email or password');
+      return res.status(400).json({
+        success: false,
+        error: 'Email and password are required.'
+      });
+    }
+
+    console.log('Looking for user with email:', email);
+    
+    // Find user by email
+    const user = await User.findOne({ email }).populate('lecturerId');
+    if (!user) {
+      console.log('User not found for email:', email);
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid credentials.'
+      });
+    }
+
+    console.log('User found:', { 
+      id: user._id, 
+      email: user.email,
+      hasPassword: !!user.password,
+      hasPasscode: !!user.passcode,
+      role: user.role || 'unknown'
+    });
+
+    // Verify password
+    console.log('Verifying password...');
+    const isPasswordValid = await user.comparePassword(password);
+    console.log('Password valid:', isPasswordValid);
+    
+    if (!isPasswordValid) {
+      console.log('Invalid password for user:', email);
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid credentials.'
+      });
+    }
+
+    // If passcode is not provided, require it as step 2
+    if (!passcode) {
+      console.log('Passcode not provided, requiring step 2');
+      return res.json({
+        success: true,
+        requirePasscode: true
+      });
+    }
+
+    // Verify passcode
+    console.log('Verifying passcode...');
+    const isPasscodeValid = await user.comparePasscode(passcode);
+    console.log('Passcode valid:', isPasscodeValid);
+    
+    if (!isPasscodeValid) {
+      console.log('Invalid passcode for user:', email);
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid passcode.'
+      });
+    }
+
+    console.log('Login successful for user:', email);
+    
+    // ... rest of your login logic ...
+    
+  } catch (err) {
+    console.error('Login error details:', {
+      message: err.message,
+      stack: err.stack,
+      name: err.name
+    });
+    res.status(500).json({
+      success: false,
+      error: 'Server error during login.'
+    });
+  }
+});
+
 export default router;
