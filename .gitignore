@@ -73,3 +73,20 @@ fix_course_data.py
 course_correct.courseData.json
 course_correct.courseData.with_lecturer_ids.json
 course_correct.lecturers.json
+
+# Ignore database helper scripts
+backend/add-level100-courses.js
+backend/add-level200-courses.js
+backend/add-level200-topup-courses.js
+backend/add-level300-courses.js
+backend/add-level300-topup-courses.js
+backend/add-level400-courses.js
+backend/cleanup-redundant-collections.js
+backend/create-attendance-existing-courses.js
+backend/create-fresh-attendance.js
+backend/create-level300-enrollments.js
+backend/create-level300-students.js
+backend/fix-it-ciis154-enrollments.js
+backend/normalize-all-students.js
+backend/query-helpers.js
+backend/enrollment.log
