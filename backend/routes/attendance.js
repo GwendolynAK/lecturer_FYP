@@ -1825,4 +1825,80 @@ router.get('/student/:studentId/monthly', async (req, res) => {
   }
 });
 
+// Get all attendance records for a student (for calendar display)
+router.get('/student/:studentId/records', async (req, res) => {
+  try {
+    const { studentId } = req.params;
+
+    if (!studentId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Student ID is required'
+      });
+    }
+
+    const client = new MongoClient(process.env.MONGODB_URI);
+    await client.connect();
+    const db = client.db('attendance_system');
+
+    // Get all attendance records for this student
+    const attendanceRecords = await db.collection('attendanceRecords').find({
+      studentId: studentId
+    }).sort({ attendanceDate: -1 }).toArray();
+
+    console.log(`📅 Found ${attendanceRecords.length} attendance records for student ${studentId}`);
+
+    // Get course information for all records
+    const courseIds = [...new Set(attendanceRecords.map(record => record.courseId))];
+    const courses = await db.collection('courses').find({
+      _id: { $in: courseIds.map(id => new ObjectId(id)) }
+    }).toArray();
+
+    const courseMap = {};
+    courses.forEach(course => {
+      courseMap[course._id.toString()] = course;
+    });
+
+    // Format the records with course information
+    const formattedRecords = attendanceRecords.map(record => {
+      const courseInfo = courseMap[record.courseId] || {};
+      return {
+        id: record._id.toString(),
+        studentId: record.studentId,
+        courseId: record.courseId,
+        courseCode: courseInfo.courseCode || 'Unknown',
+        courseTitle: courseInfo.title || 'Unknown Course',
+        attendanceDate: record.attendanceDate,
+        status: record.status,
+        markedAt: record.markedAt,
+        markingMethod: record.markingMethod,
+        notes: record.notes
+      };
+    });
+
+    await client.close();
+
+    res.json({
+      success: true,
+      data: {
+        records: formattedRecords,
+        summary: {
+          totalRecords: formattedRecords.length,
+          presentCount: formattedRecords.filter(r => r.status === 'present').length,
+          absentCount: formattedRecords.filter(r => r.status === 'absent').length,
+          lateCount: formattedRecords.filter(r => r.status === 'late').length,
+          excusedCount: formattedRecords.filter(r => r.status === 'excused').length
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching attendance records:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching attendance records'
+    });
+  }
+});
+
 export default router;
