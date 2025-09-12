@@ -1532,29 +1532,56 @@ router.get('/student/:studentId/weekly', async (req, res) => {
         };
       }
       
-      // Get course info
-      const course = attendanceRecords.find(r => r.courseId && r.courseId.toString() === record.courseId.toString());
-      const courseCode = course?.courseCode || 'Unknown';
+      // Use courseId as the key to properly group by individual courses
+      const courseKey = record.courseId ? record.courseId.toString() : (record.courseCode || 'Unknown');
       
-      if (!weeklyData[weekKey].courses[courseCode]) {
-        weeklyData[weekKey].courses[courseCode] = {
-          courseCode,
+      if (!weeklyData[weekKey].courses[courseKey]) {
+        weeklyData[weekKey].courses[courseKey] = {
+          courseId: record.courseId,
+          courseCode: record.courseCode || 'Unknown',
+          courseTitle: 'Loading...', // Will be populated below
           present: 0,
           absent: 0,
           total: 0
         };
       }
       
-      weeklyData[weekKey].courses[courseCode].total++;
+      weeklyData[weekKey].courses[courseKey].total++;
       weeklyData[weekKey].totalClasses++;
       
       if (record.status === 'present') {
-        weeklyData[weekKey].courses[courseCode].present++;
+        weeklyData[weekKey].courses[courseKey].present++;
         weeklyData[weekKey].totalPresent++;
       } else if (record.status === 'absent') {
-        weeklyData[weekKey].courses[courseCode].absent++;
+        weeklyData[weekKey].courses[courseKey].absent++;
         weeklyData[weekKey].totalAbsent++;
       }
+    });
+
+    // Fetch course titles for all unique courseIds
+    const courseIds = [...new Set(attendanceRecords.map(r => r.courseId).filter(Boolean))];
+    const courseTitles = {};
+    if (courseIds.length > 0) {
+      const courses = await db.collection('courses').find({
+        _id: { $in: courseIds.map(id => new ObjectId(id)) }
+      }).toArray();
+      
+      courses.forEach(course => {
+        courseTitles[course._id.toString()] = course.title || course.courseCode;
+      });
+    }
+
+    // Update course titles in weekly data
+    Object.values(weeklyData).forEach(week => {
+      Object.values(week.courses).forEach(course => {
+        if (course.courseId) {
+          course.courseTitle = courseTitles[course.courseId.toString()] || course.courseCode;
+        } else {
+          course.courseTitle = course.courseCode;
+        }
+        // Calculate attendance percentage
+        course.attendancePercentage = course.total > 0 ? Math.round((course.present / course.total) * 100) : 0;
+      });
     });
 
     // Convert to array and sort by week
@@ -1698,29 +1725,56 @@ router.get('/student/:studentId/monthly', async (req, res) => {
         };
       }
       
-      // Get course info
-      const course = attendanceRecords.find(r => r.courseId && r.courseId.toString() === record.courseId.toString());
-      const courseCode = course?.courseCode || 'Unknown';
+      // Use courseId as the key to properly group by individual courses
+      const courseKey = record.courseId ? record.courseId.toString() : (record.courseCode || 'Unknown');
       
-      if (!monthlyData[monthKey].courses[courseCode]) {
-        monthlyData[monthKey].courses[courseCode] = {
-          courseCode,
+      if (!monthlyData[monthKey].courses[courseKey]) {
+        monthlyData[monthKey].courses[courseKey] = {
+          courseId: record.courseId,
+          courseCode: record.courseCode || 'Unknown',
+          courseTitle: 'Loading...', // Will be populated below
           present: 0,
           absent: 0,
           total: 0
         };
       }
       
-      monthlyData[monthKey].courses[courseCode].total++;
+      monthlyData[monthKey].courses[courseKey].total++;
       monthlyData[monthKey].totalClasses++;
       
       if (record.status === 'present') {
-        monthlyData[monthKey].courses[courseCode].present++;
+        monthlyData[monthKey].courses[courseKey].present++;
         monthlyData[monthKey].totalPresent++;
       } else if (record.status === 'absent') {
-        monthlyData[monthKey].courses[courseCode].absent++;
+        monthlyData[monthKey].courses[courseKey].absent++;
         monthlyData[monthKey].totalAbsent++;
       }
+    });
+
+    // Fetch course titles for all unique courseIds
+    const courseIds = [...new Set(attendanceRecords.map(r => r.courseId).filter(Boolean))];
+    const courseTitles = {};
+    if (courseIds.length > 0) {
+      const courses = await db.collection('courses').find({
+        _id: { $in: courseIds.map(id => new ObjectId(id)) }
+      }).toArray();
+      
+      courses.forEach(course => {
+        courseTitles[course._id.toString()] = course.title || course.courseCode;
+      });
+    }
+
+    // Update course titles in monthly data
+    Object.values(monthlyData).forEach(month => {
+      Object.values(month.courses).forEach(course => {
+        if (course.courseId) {
+          course.courseTitle = courseTitles[course.courseId.toString()] || course.courseCode;
+        } else {
+          course.courseTitle = course.courseCode;
+        }
+        // Calculate attendance percentage
+        course.attendancePercentage = course.total > 0 ? Math.round((course.present / course.total) * 100) : 0;
+      });
     });
 
     // Convert to array and sort by month
