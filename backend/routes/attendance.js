@@ -1435,4 +1435,290 @@ router.get('/student/:studentId/history/:courseCode', async (req, res) => {
   }
 });
 
+// GET /api/attendance/student/:studentId/weekly - Get weekly attendance summary
+router.get('/student/:studentId/weekly', async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    const { courseCode, weeks = 12 } = req.query; // Get last 12 weeks by default
+
+    console.log('🔍 Weekly attendance request:', { studentId, courseCode, weeks });
+
+    const { client, db } = await getDatabase();
+
+    // Get student information
+    const student = await db.collection('studentsNormalized').findOne({ studentId });
+    if (!student) {
+      await client.close();
+      return res.status(404).json({
+        success: false,
+        message: 'Student not found'
+      });
+    }
+
+    // Calculate date range for the last N weeks
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(endDate.getDate() - (weeks * 7));
+
+    // Build query
+    const query = {
+      studentId: studentId,
+      attendanceDate: {
+        $gte: startDate,
+        $lte: endDate
+      }
+    };
+
+    // Add course filter if specified
+    if (courseCode) {
+      const course = await db.collection('courses').findOne({ courseCode });
+      if (course) {
+        query.courseId = course._id;
+      }
+    }
+
+    // Get attendance records
+    const attendanceRecords = await db.collection('attendance_records')
+      .find(query)
+      .sort({ attendanceDate: -1 })
+      .toArray();
+
+    console.log('📊 Found', attendanceRecords.length, 'attendance records for weekly analysis');
+
+    // Group by week
+    const weeklyData = {};
+    
+    attendanceRecords.forEach(record => {
+      const recordDate = new Date(record.attendanceDate);
+      const weekStart = new Date(recordDate);
+      weekStart.setDate(recordDate.getDate() - recordDate.getDay()); // Start of week (Sunday)
+      weekStart.setHours(0, 0, 0, 0);
+      
+      const weekKey = weekStart.toISOString().split('T')[0];
+      
+      if (!weeklyData[weekKey]) {
+        weeklyData[weekKey] = {
+          weekStart: weekKey,
+          weekEnd: new Date(weekStart.getTime() + 6 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          courses: {},
+          totalPresent: 0,
+          totalAbsent: 0,
+          totalClasses: 0
+        };
+      }
+      
+      // Get course info
+      const course = attendanceRecords.find(r => r.courseId && r.courseId.toString() === record.courseId.toString());
+      const courseCode = course?.courseCode || 'Unknown';
+      
+      if (!weeklyData[weekKey].courses[courseCode]) {
+        weeklyData[weekKey].courses[courseCode] = {
+          courseCode,
+          present: 0,
+          absent: 0,
+          total: 0
+        };
+      }
+      
+      weeklyData[weekKey].courses[courseCode].total++;
+      weeklyData[weekKey].totalClasses++;
+      
+      if (record.status === 'present') {
+        weeklyData[weekKey].courses[courseCode].present++;
+        weeklyData[weekKey].totalPresent++;
+      } else if (record.status === 'absent') {
+        weeklyData[weekKey].courses[courseCode].absent++;
+        weeklyData[weekKey].totalAbsent++;
+      }
+    });
+
+    // Convert to array and sort by week
+    const weeklyArray = Object.values(weeklyData)
+      .sort((a, b) => new Date(a.weekStart) - new Date(b.weekStart));
+
+    // Calculate attendance percentages
+    weeklyArray.forEach(week => {
+      week.attendancePercentage = week.totalClasses > 0 
+        ? Math.round((week.totalPresent / week.totalClasses) * 100) 
+        : 0;
+      
+      Object.values(week.courses).forEach(course => {
+        course.attendancePercentage = course.total > 0 
+          ? Math.round((course.present / course.total) * 100) 
+          : 0;
+      });
+    });
+
+    await client.close();
+
+    res.json({
+      success: true,
+      data: {
+        student: {
+          studentId: student.studentId,
+          fullName: student.fullName,
+          program: student.program,
+          level: student.level
+        },
+        weeklyData: weeklyArray,
+        summary: {
+          totalWeeks: weeklyArray.length,
+          averageAttendance: weeklyArray.length > 0 
+            ? Math.round(weeklyArray.reduce((sum, week) => sum + week.attendancePercentage, 0) / weeklyArray.length)
+            : 0
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Weekly attendance error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching weekly attendance data',
+      error: error.message
+    });
+  }
+});
+
+// GET /api/attendance/student/:studentId/monthly - Get monthly attendance summary
+router.get('/student/:studentId/monthly', async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    const { courseCode, months = 6 } = req.query; // Get last 6 months by default
+
+    console.log('🔍 Monthly attendance request:', { studentId, courseCode, months });
+
+    const { client, db } = await getDatabase();
+
+    // Get student information
+    const student = await db.collection('studentsNormalized').findOne({ studentId });
+    if (!student) {
+      await client.close();
+      return res.status(404).json({
+        success: false,
+        message: 'Student not found'
+      });
+    }
+
+    // Calculate date range for the last N months
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setMonth(endDate.getMonth() - months);
+
+    // Build query
+    const query = {
+      studentId: studentId,
+      attendanceDate: {
+        $gte: startDate,
+        $lte: endDate
+      }
+    };
+
+    // Add course filter if specified
+    if (courseCode) {
+      const course = await db.collection('courses').findOne({ courseCode });
+      if (course) {
+        query.courseId = course._id;
+      }
+    }
+
+    // Get attendance records
+    const attendanceRecords = await db.collection('attendance_records')
+      .find(query)
+      .sort({ attendanceDate: -1 })
+      .toArray();
+
+    console.log('📊 Found', attendanceRecords.length, 'attendance records for monthly analysis');
+
+    // Group by month
+    const monthlyData = {};
+    
+    attendanceRecords.forEach(record => {
+      const recordDate = new Date(record.attendanceDate);
+      const monthKey = `${recordDate.getFullYear()}-${String(recordDate.getMonth() + 1).padStart(2, '0')}`;
+      
+      if (!monthlyData[monthKey]) {
+        monthlyData[monthKey] = {
+          month: monthKey,
+          monthName: recordDate.toLocaleString('default', { month: 'long', year: 'numeric' }),
+          courses: {},
+          totalPresent: 0,
+          totalAbsent: 0,
+          totalClasses: 0
+        };
+      }
+      
+      // Get course info
+      const course = attendanceRecords.find(r => r.courseId && r.courseId.toString() === record.courseId.toString());
+      const courseCode = course?.courseCode || 'Unknown';
+      
+      if (!monthlyData[monthKey].courses[courseCode]) {
+        monthlyData[monthKey].courses[courseCode] = {
+          courseCode,
+          present: 0,
+          absent: 0,
+          total: 0
+        };
+      }
+      
+      monthlyData[monthKey].courses[courseCode].total++;
+      monthlyData[monthKey].totalClasses++;
+      
+      if (record.status === 'present') {
+        monthlyData[monthKey].courses[courseCode].present++;
+        monthlyData[monthKey].totalPresent++;
+      } else if (record.status === 'absent') {
+        monthlyData[monthKey].courses[courseCode].absent++;
+        monthlyData[monthKey].totalAbsent++;
+      }
+    });
+
+    // Convert to array and sort by month
+    const monthlyArray = Object.values(monthlyData)
+      .sort((a, b) => a.month.localeCompare(b.month));
+
+    // Calculate attendance percentages
+    monthlyArray.forEach(month => {
+      month.attendancePercentage = month.totalClasses > 0 
+        ? Math.round((month.totalPresent / month.totalClasses) * 100) 
+        : 0;
+      
+      Object.values(month.courses).forEach(course => {
+        course.attendancePercentage = course.total > 0 
+          ? Math.round((course.present / course.total) * 100) 
+          : 0;
+      });
+    });
+
+    await client.close();
+
+    res.json({
+      success: true,
+      data: {
+        student: {
+          studentId: student.studentId,
+          fullName: student.fullName,
+          program: student.program,
+          level: student.level
+        },
+        monthlyData: monthlyArray,
+        summary: {
+          totalMonths: monthlyArray.length,
+          averageAttendance: monthlyArray.length > 0 
+            ? Math.round(monthlyArray.reduce((sum, month) => sum + month.attendancePercentage, 0) / monthlyArray.length)
+            : 0
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Monthly attendance error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching monthly attendance data',
+      error: error.message
+    });
+  }
+});
+
 export default router;
