@@ -1842,7 +1842,7 @@ router.get('/student/:studentId/records', async (req, res) => {
     const db = client.db('attendance_system');
 
     // Get all attendance records for this student
-    const attendanceRecords = await db.collection('attendanceRecords').find({
+    const attendanceRecords = await db.collection('attendance_records').find({
       studentId: studentId
     }).sort({ attendanceDate: -1 }).toArray();
 
