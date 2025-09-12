@@ -1837,9 +1837,7 @@ router.get('/student/:studentId/records', async (req, res) => {
       });
     }
 
-    const client = new MongoClient(process.env.MONGODB_URI);
-    await client.connect();
-    const db = client.db('attendance_system');
+    const { client, db } = await getDatabase();
 
     // Get all attendance records for this student
     const attendanceRecords = await db.collection('attendance_records').find({
