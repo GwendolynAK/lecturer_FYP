@@ -1305,7 +1305,7 @@ router.get('/student/:studentId/courses', async (req, res) => {
     const courseAttendance = {};
     
     courses.forEach(course => {
-      courseAttendance[course.courseCode] = {
+      courseAttendance[course._id] = {
         courseCode: course.courseCode,
         courseTitle: course.courseTitle,
         program: course.program,
@@ -1319,14 +1319,14 @@ router.get('/student/:studentId/courses', async (req, res) => {
 
     // Process attendance records
     attendanceRecords.forEach(record => {
-      const courseCode = record.courseCode;
-      if (courseAttendance[courseCode]) {
-        courseAttendance[courseCode].totalSessions++;
+      const courseId = record.courseId;
+      if (courseAttendance[courseId]) {
+        courseAttendance[courseId].totalSessions++;
         
         if (record.status === 'present') {
-          courseAttendance[courseCode].present++;
+          courseAttendance[courseId].present++;
         } else if (record.status === 'absent') {
-          courseAttendance[courseCode].absent++;
+          courseAttendance[courseId].absent++;
         }
       }
     });
