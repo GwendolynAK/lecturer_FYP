@@ -1455,12 +1455,37 @@ router.get('/student/:studentId/weekly', async (req, res) => {
       });
     }
 
-    // Calculate date range for the last N weeks
-    const endDate = new Date();
-    const startDate = new Date();
+    // First, find the actual date range in the database for this student
+    const dateRange = await db.collection('attendance_records').aggregate([
+      { $match: { studentId: studentId } },
+      {
+        $group: {
+          _id: null,
+          minDate: { $min: '$attendanceDate' },
+          maxDate: { $max: '$attendanceDate' }
+        }
+      }
+    ]).toArray();
+
+    if (dateRange.length === 0) {
+      return res.json({
+        success: true,
+        data: {
+          student: student,
+          weeklyData: [],
+          summary: { totalWeeks: 0, averageAttendance: 0 }
+        }
+      });
+    }
+
+    const { minDate, maxDate } = dateRange[0];
+    
+    // Calculate date range for the last N weeks from the actual data range
+    const endDate = new Date(maxDate);
+    const startDate = new Date(maxDate);
     startDate.setDate(endDate.getDate() - (weeks * 7));
 
-    // Build query
+    // Build query using the actual date range
     const query = {
       studentId: studentId,
       attendanceDate: {
@@ -1600,12 +1625,37 @@ router.get('/student/:studentId/monthly', async (req, res) => {
       });
     }
 
-    // Calculate date range for the last N months
-    const endDate = new Date();
-    const startDate = new Date();
+    // First, find the actual date range in the database for this student
+    const dateRange = await db.collection('attendance_records').aggregate([
+      { $match: { studentId: studentId } },
+      {
+        $group: {
+          _id: null,
+          minDate: { $min: '$attendanceDate' },
+          maxDate: { $max: '$attendanceDate' }
+        }
+      }
+    ]).toArray();
+
+    if (dateRange.length === 0) {
+      return res.json({
+        success: true,
+        data: {
+          student: student,
+          monthlyData: [],
+          summary: { totalMonths: 0, averageAttendance: 0 }
+        }
+      });
+    }
+
+    const { minDate, maxDate } = dateRange[0];
+    
+    // Calculate date range for the last N months from the actual data range
+    const endDate = new Date(maxDate);
+    const startDate = new Date(maxDate);
     startDate.setMonth(endDate.getMonth() - months);
 
-    // Build query
+    // Build query using the actual date range
     const query = {
       studentId: studentId,
       attendanceDate: {
