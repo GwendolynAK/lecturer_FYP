@@ -1,5 +1,4 @@
 import express from 'express';
-import { CourseEnrollment, Attendance, AttendanceSession, User } from '../models/index.js';
 
 const router = express.Router();
 
