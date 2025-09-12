@@ -1096,4 +1096,343 @@ function getOrdinalSuffix(day) {
   }
 }
 
+// ========================================
+// STUDENT-FACING ATTENDANCE ENDPOINTS
+// ========================================
+
+// GET /api/attendance/student/:studentId - Get attendance data for a specific student
+router.get('/student/:studentId', async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    const { academicYear = '2024/2025', semester = 1, program, level } = req.query;
+
+    console.log('🔍 Student attendance request:', { studentId, academicYear, semester, program, level });
+
+    const { client, db } = await getDatabase();
+
+    // Get student information
+    const student = await db.collection('studentsNormalized').findOne({ studentId });
+    if (!student) {
+      await client.close();
+      return res.status(404).json({
+        success: false,
+        message: 'Student not found'
+      });
+    }
+
+    console.log('📚 Found student:', student.fullName);
+
+    // Get student's courses based on program and level
+    const courseQuery = {};
+    if (program) courseQuery.program = program;
+    if (level) courseQuery.level = level;
+
+    const courses = await db.collection('courses').find(courseQuery).toArray();
+    console.log('📚 Found', courses.length, 'courses for student');
+
+    if (courses.length === 0) {
+      await client.close();
+      return res.json({
+        success: true,
+        data: {
+          student: {
+            studentId: student.studentId,
+            fullName: student.fullName,
+            program: student.program,
+            level: student.level
+          },
+          courses: []
+        }
+      });
+    }
+
+    // Get course IDs for attendance lookup
+    const courseIds = courses.map(course => course._id);
+
+    // Get attendance records for this student across all their courses
+    const attendanceRecords = await db.collection('attendance_records').find({
+      studentId: studentId,
+      courseId: { $in: courseIds }
+    }).sort({ attendanceDate: -1 }).toArray();
+
+    console.log('📊 Found', attendanceRecords.length, 'attendance records for student');
+
+    // Group attendance by course
+    const courseAttendance = {};
+    
+    courses.forEach(course => {
+      courseAttendance[course.courseCode] = {
+        courseCode: course.courseCode,
+        courseTitle: course.courseTitle,
+        program: course.program,
+        level: course.level,
+        present: 0,
+        absent: 0,
+        late: 0,
+        excused: 0,
+        totalSessions: 0,
+        attendancePercentage: 0,
+        recentRecords: []
+      };
+    });
+
+    // Process attendance records
+    attendanceRecords.forEach(record => {
+      const courseCode = record.courseCode;
+      if (courseAttendance[courseCode]) {
+        courseAttendance[courseCode].totalSessions++;
+        
+        switch (record.status) {
+          case 'present':
+            courseAttendance[courseCode].present++;
+            break;
+          case 'absent':
+            courseAttendance[courseCode].absent++;
+            break;
+          case 'late':
+            courseAttendance[courseCode].late++;
+            break;
+          case 'excused':
+            courseAttendance[courseCode].excused++;
+            break;
+        }
+
+        // Add recent records (last 5 per course)
+        if (courseAttendance[courseCode].recentRecords.length < 5) {
+          courseAttendance[courseCode].recentRecords.push({
+            date: record.attendanceDate,
+            status: record.status,
+            markedAt: record.markedAt,
+            lecturerName: record.lecturerName
+          });
+        }
+      }
+    });
+
+    // Calculate attendance percentages
+    Object.values(courseAttendance).forEach(course => {
+      if (course.totalSessions > 0) {
+        const attendedSessions = course.present + course.late + course.excused;
+        course.attendancePercentage = Math.round((attendedSessions / course.totalSessions) * 100);
+      }
+    });
+
+    // Convert to array and sort by course code
+    const coursesData = Object.values(courseAttendance).sort((a, b) => 
+      a.courseCode.localeCompare(b.courseCode)
+    );
+
+    await client.close();
+
+    res.json({
+      success: true,
+      data: {
+        student: {
+          studentId: student.studentId,
+          fullName: student.fullName,
+          program: student.program,
+          level: student.level
+        },
+        courses: coursesData,
+        summary: {
+          totalCourses: coursesData.length,
+          totalSessions: coursesData.reduce((sum, course) => sum + course.totalSessions, 0),
+          averageAttendance: coursesData.length > 0 
+            ? Math.round(coursesData.reduce((sum, course) => sum + course.attendancePercentage, 0) / coursesData.length)
+            : 0
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching student attendance:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching student attendance data',
+      error: error.message
+    });
+  }
+});
+
+// GET /api/attendance/student/:studentId/courses - Get student's courses with attendance summary
+router.get('/student/:studentId/courses', async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    const { academicYear = '2024/2025', semester = 1 } = req.query;
+
+    console.log('🔍 Student courses request:', { studentId, academicYear, semester });
+
+    const { client, db } = await getDatabase();
+
+    // Get student information
+    const student = await db.collection('studentsNormalized').findOne({ studentId });
+    if (!student) {
+      await client.close();
+      return res.status(404).json({
+        success: false,
+        message: 'Student not found'
+      });
+    }
+
+    // Get student's courses
+    const courses = await db.collection('courses').find({
+      program: student.program,
+      level: student.level
+    }).toArray();
+
+    console.log('📚 Found', courses.length, 'courses for student');
+
+    if (courses.length === 0) {
+      await client.close();
+      return res.json({
+        success: true,
+        data: []
+      });
+    }
+
+    // Get course IDs for attendance lookup
+    const courseIds = courses.map(course => course._id);
+
+    // Get attendance records for this student
+    const attendanceRecords = await db.collection('attendance_records').find({
+      studentId: studentId,
+      courseId: { $in: courseIds }
+    }).toArray();
+
+    console.log('📊 Found', attendanceRecords.length, 'attendance records');
+
+    // Group attendance by course
+    const courseAttendance = {};
+    
+    courses.forEach(course => {
+      courseAttendance[course.courseCode] = {
+        courseCode: course.courseCode,
+        courseTitle: course.courseTitle,
+        program: course.program,
+        level: course.level,
+        present: 0,
+        absent: 0,
+        totalSessions: 0,
+        attendancePercentage: 0
+      };
+    });
+
+    // Process attendance records
+    attendanceRecords.forEach(record => {
+      const courseCode = record.courseCode;
+      if (courseAttendance[courseCode]) {
+        courseAttendance[courseCode].totalSessions++;
+        
+        if (record.status === 'present') {
+          courseAttendance[courseCode].present++;
+        } else if (record.status === 'absent') {
+          courseAttendance[courseCode].absent++;
+        }
+      }
+    });
+
+    // Calculate attendance percentages
+    Object.values(courseAttendance).forEach(course => {
+      if (course.totalSessions > 0) {
+        course.attendancePercentage = Math.round((course.present / course.totalSessions) * 100);
+      }
+    });
+
+    // Convert to array and sort by course code
+    const coursesData = Object.values(courseAttendance).sort((a, b) => 
+      a.courseCode.localeCompare(b.courseCode)
+    );
+
+    await client.close();
+
+    res.json({
+      success: true,
+      data: coursesData
+    });
+
+  } catch (error) {
+    console.error('Error fetching student courses:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching student courses',
+      error: error.message
+    });
+  }
+});
+
+// GET /api/attendance/student/:studentId/history/:courseCode - Get attendance history for a specific course
+router.get('/student/:studentId/history/:courseCode', async (req, res) => {
+  try {
+    const { studentId, courseCode } = req.params;
+    const { academicYear = '2024/2025', semester = 1, limit = 50 } = req.query;
+
+    console.log('🔍 Student course history request:', { studentId, courseCode, academicYear, semester });
+
+    const { client, db } = await getDatabase();
+
+    // Get course information
+    const course = await db.collection('courses').findOne({ courseCode });
+    if (!course) {
+      await client.close();
+      return res.status(404).json({
+        success: false,
+        message: 'Course not found'
+      });
+    }
+
+    // Get attendance records for this student and course
+    const attendanceRecords = await db.collection('attendance_records')
+      .find({
+        studentId: studentId,
+        courseId: course._id
+      })
+      .sort({ attendanceDate: -1 })
+      .limit(parseInt(limit))
+      .toArray();
+
+    console.log('📊 Found', attendanceRecords.length, 'attendance records for course');
+
+    // Transform records for frontend
+    const history = attendanceRecords.map(record => ({
+      date: record.attendanceDate,
+      status: record.status,
+      markedAt: record.markedAt,
+      lecturerName: record.lecturerName,
+      location: record.location,
+      markingMethod: record.markingMethod,
+      notes: record.notes
+    }));
+
+    await client.close();
+
+    res.json({
+      success: true,
+      data: {
+        course: {
+          courseCode: course.courseCode,
+          courseTitle: course.courseTitle,
+          program: course.program,
+          level: course.level
+        },
+        history: history,
+        summary: {
+          totalRecords: attendanceRecords.length,
+          presentCount: attendanceRecords.filter(r => r.status === 'present').length,
+          absentCount: attendanceRecords.filter(r => r.status === 'absent').length,
+          lateCount: attendanceRecords.filter(r => r.status === 'late').length,
+          excusedCount: attendanceRecords.filter(r => r.status === 'excused').length
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching student course history:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching student course history',
+      error: error.message
+    });
+  }
+});
+
 export default router;
