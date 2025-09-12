@@ -1307,7 +1307,7 @@ router.get('/student/:studentId/courses', async (req, res) => {
     courses.forEach(course => {
       courseAttendance[course._id] = {
         courseCode: course.courseCode,
-        courseTitle: course.courseTitle,
+        courseTitle: course.title || course.courseTitle || course.courseCode,
         program: course.program,
         level: course.level,
         present: 0,
