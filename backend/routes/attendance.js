@@ -1439,9 +1439,9 @@ router.get('/student/:studentId/history/:courseCode', async (req, res) => {
 router.get('/student/:studentId/weekly', async (req, res) => {
   try {
     const { studentId } = req.params;
-    const { courseCode, weeks = 12 } = req.query; // Get last 12 weeks by default
+    const { courseCode, weeks, startDate, endDate } = req.query;
 
-    console.log('🔍 Weekly attendance request:', { studentId, courseCode, weeks });
+    console.log('🔍 Weekly attendance request:', { studentId, courseCode, weeks, startDate, endDate });
 
     const { client, db } = await getDatabase();
 
@@ -1478,19 +1478,32 @@ router.get('/student/:studentId/weekly', async (req, res) => {
       });
     }
 
-    const { minDate, maxDate } = dateRange[0];
+    const { minDate: dbMinDate, maxDate: dbMaxDate } = dateRange[0];
     
-    // Calculate date range for the last N weeks from the actual data range
-    const endDate = new Date(maxDate);
-    const startDate = new Date(maxDate);
-    startDate.setDate(endDate.getDate() - (weeks * 7));
+    // Determine date range based on parameters
+    let queryStartDate, queryEndDate;
+    
+    if (startDate && endDate) {
+      // Use provided date range
+      queryStartDate = new Date(startDate);
+      queryEndDate = new Date(endDate);
+    } else if (weeks) {
+      // Use last N weeks from the actual data range
+      queryEndDate = new Date(dbMaxDate);
+      queryStartDate = new Date(dbMaxDate);
+      queryStartDate.setDate(queryEndDate.getDate() - (parseInt(weeks) * 7));
+    } else {
+      // Default: use all available data
+      queryStartDate = new Date(dbMinDate);
+      queryEndDate = new Date(dbMaxDate);
+    }
 
-    // Build query using the actual date range
+    // Build query using the flexible date range
     const query = {
       studentId: studentId,
       attendanceDate: {
-        $gte: startDate,
-        $lte: endDate
+        $gte: queryStartDate,
+        $lte: queryEndDate
       }
     };
 
@@ -1837,10 +1850,12 @@ router.get('/student/:studentId/records', async (req, res) => {
       });
     }
 
-    const { client, db } = await getDatabase();
+    const client = new MongoClient(process.env.MONGODB_URI);
+    await client.connect();
+    const db = client.db('attendance_system');
 
     // Get all attendance records for this student
-    const attendanceRecords = await db.collection('attendance_records').find({
+    const attendanceRecords = await db.collection('attendanceRecords').find({
       studentId: studentId
     }).sort({ attendanceDate: -1 }).toArray();
 
