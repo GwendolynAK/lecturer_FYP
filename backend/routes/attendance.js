@@ -6,6 +6,48 @@ dotenv.config();
 
 const router = express.Router();
 
+// Debug endpoint to see database collections and structure
+router.get('/debug/database-structure', async (req, res) => {
+  try {
+    const { client, db } = await getDatabase();
+    
+    // Get all collection names
+    const collections = await db.listCollections().toArray();
+    const collectionNames = collections.map(c => c.name);
+    
+    // Get sample documents from each collection
+    const sampleData = {};
+    
+    for (const collectionName of collectionNames) {
+      try {
+        const sample = await db.collection(collectionName).findOne({});
+        if (sample) {
+          sampleData[collectionName] = {
+            fields: Object.keys(sample),
+            sampleDocument: sample
+          };
+        }
+      } catch (error) {
+        sampleData[collectionName] = { error: error.message };
+      }
+    }
+    
+    await client.close();
+    
+    res.json({
+      success: true,
+      collections: collectionNames,
+      structure: sampleData
+    });
+  } catch (error) {
+    console.error('Error getting database structure:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 // Helper function to get database connection
 async function getDatabase() {
   const client = new MongoClient(process.env.MONGO_URI);
