@@ -48,6 +48,156 @@ router.get('/debug/database-structure', async (req, res) => {
   }
 });
 
+// Create attendance session
+router.post('/sessions', async (req, res) => {
+  try {
+    const { courseId, courseCode, program, level, location, lecturerName, academicYear, semester } = req.body;
+    
+    if (!courseId || !courseCode) {
+      return res.status(400).json({
+        success: false,
+        error: 'Course ID and Course Code are required'
+      });
+    }
+
+    const { client, db } = await getDatabase();
+    
+    // Generate unique session ID
+    const sessionId = `ATT_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Create session document
+    const sessionData = {
+      sessionId,
+      courseId: new ObjectId(courseId),
+      courseCode,
+      program: program || 'Unknown Program',
+      level: level || 'Unknown Level',
+      date: new Date(),
+      startTime: new Date(),
+      endTime: new Date(Date.now() + 2 * 60 * 60 * 1000), // 2 hours from now
+      location: location || 'Main Campus',
+      lecturerName: lecturerName || 'Dr. Lecturer',
+      academicYear: academicYear || '2024/2025',
+      semester: semester || 1,
+      status: 'active',
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    
+    // Insert session into database
+    const result = await db.collection('attendance_sessions').insertOne(sessionData);
+    
+    await client.close();
+    
+    res.json({
+      success: true,
+      session: {
+        ...sessionData,
+        _id: result.insertedId
+      }
+    });
+  } catch (error) {
+    console.error('Error creating attendance session:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Mark attendance (for students via QR code)
+router.post('/mark', async (req, res) => {
+  try {
+    const { studentId, courseId, sessionId, status, markingMethod, location } = req.body;
+    
+    if (!studentId || !courseId || !sessionId || !status) {
+      return res.status(400).json({
+        success: false,
+        error: 'Student ID, Course ID, Session ID, and Status are required'
+      });
+    }
+
+    const { client, db } = await getDatabase();
+    
+    // Check if session exists and is active
+    const session = await db.collection('attendance_sessions').findOne({
+      sessionId: sessionId,
+      status: 'active'
+    });
+    
+    if (!session) {
+      await client.close();
+      return res.status(404).json({
+        success: false,
+        error: 'Attendance session not found or has ended'
+      });
+    }
+    
+    // Check if student is enrolled in the course
+    const enrollment = await db.collection('course_enrollments').findOne({
+      studentId: studentId,
+      courseId: new ObjectId(courseId)
+    });
+    
+    if (!enrollment) {
+      await client.close();
+      return res.status(403).json({
+        success: false,
+        error: 'Student is not enrolled in this course'
+      });
+    }
+    
+    // Check if attendance already marked for this session
+    const existingRecord = await db.collection('attendance_records').findOne({
+      studentId: studentId,
+      sessionId: sessionId
+    });
+    
+    if (existingRecord) {
+      await client.close();
+      return res.status(409).json({
+        success: false,
+        error: 'Attendance already marked for this session'
+      });
+    }
+    
+    // Create attendance record
+    const attendanceRecord = {
+      studentId: studentId,
+      courseId: new ObjectId(courseId),
+      sessionId: sessionId,
+      status: status, // 'present' or 'absent'
+      attendanceDate: new Date(),
+      markedAt: new Date(),
+      markingMethod: markingMethod || 'qr_code',
+      isVerified: true,
+      notes: null,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    
+    // Insert attendance record
+    const result = await db.collection('attendance_records').insertOne(attendanceRecord);
+    
+    await client.close();
+    
+    res.json({
+      success: true,
+      message: 'Attendance marked successfully',
+      record: {
+        ...attendanceRecord,
+        _id: result.insertedId
+      }
+    });
+  } catch (error) {
+    console.error('Error marking attendance:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 // Helper function to get database connection
 async function getDatabase() {
   const client = new MongoClient(process.env.MONGO_URI);
