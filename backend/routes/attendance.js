@@ -53,14 +53,35 @@ router.post('/sessions', async (req, res) => {
   try {
     const { courseId, courseCode, program, level, location, lecturerName, academicYear, semester } = req.body;
     
-    if (!courseId || !courseCode) {
+    if (!courseCode || !program || !level) {
       return res.status(400).json({
         success: false,
-        error: 'Course ID and Course Code are required'
+        error: 'Course Code, Program, and Level are all required for unique course identification'
       });
     }
 
     const { client, db } = await getDatabase();
+    
+    // If courseId is provided, use it; otherwise, look up the course by courseCode
+    let actualCourseId;
+    if (courseId && courseId !== 'undefined' && !courseId.startsWith('temp_')) {
+      actualCourseId = new ObjectId(courseId);
+    } else {
+      // Look up course by courseCode, program, and level to ensure uniqueness
+      const course = await db.collection('courses').findOne({ 
+        courseCode: courseCode,
+        program: program,
+        level: level
+      });
+      if (!course) {
+        await client.close();
+        return res.status(404).json({
+          success: false,
+          error: `Course not found: ${courseCode} in ${program} - ${level}`
+        });
+      }
+      actualCourseId = course._id;
+    }
     
     // Generate unique session ID
     const sessionId = `ATT_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -68,7 +89,7 @@ router.post('/sessions', async (req, res) => {
     // Create session document
     const sessionData = {
       sessionId,
-      courseId: new ObjectId(courseId),
+      courseId: actualCourseId,
       courseCode,
       program: program || 'Unknown Program',
       level: level || 'Unknown Level',
