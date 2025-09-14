@@ -177,9 +177,59 @@ router.put('/sessions/:sessionId', async (req, res) => {
       updatedAt: new Date()
     };
     
-    // If completing the session, set endTime
+    // If completing the session, set endTime and auto-mark absent students
     if (status === 'completed') {
       updateData.endTime = new Date();
+      
+      // Get the session details to find the course
+      const session = await db.collection('attendance_sessions').findOne({ sessionId: sessionId });
+      if (!session) {
+        await client.close();
+        return res.status(404).json({
+          success: false,
+          error: 'Session not found'
+        });
+      }
+      
+      // Get all enrolled students for this course
+      const enrolledStudents = await db.collection('course_enrollments').find({
+        courseCode: session.courseCode,
+        program: session.program,
+        level: session.level
+      }).toArray();
+      
+      // Get students who already marked attendance (present)
+      const presentStudents = await db.collection('attendance_records').find({
+        sessionId: sessionId,
+        status: 'present'
+      }).toArray();
+      
+      const presentStudentIds = presentStudents.map(record => record.studentId);
+      
+      // Find students who didn't mark attendance
+      const absentStudents = enrolledStudents.filter(enrollment => 
+        !presentStudentIds.includes(enrollment.studentId)
+      );
+      
+      // Create absent records for students who didn't mark attendance
+      if (absentStudents.length > 0) {
+        const absentRecords = absentStudents.map(enrollment => ({
+          sessionId: sessionId,
+          studentId: enrollment.studentId,
+          studentName: enrollment.studentName,
+          indexNumber: enrollment.indexNumber,
+          status: 'absent',
+          markedAt: new Date(),
+          courseCode: session.courseCode,
+          program: session.program,
+          level: session.level,
+          academicYear: session.academicYear,
+          semester: session.semester
+        }));
+        
+        await db.collection('attendance_records').insertMany(absentRecords);
+        console.log(`✅ Auto-marked ${absentStudents.length} students as absent for session ${sessionId}`);
+      }
     }
     
     const result = await db.collection('attendance_sessions').updateOne(
