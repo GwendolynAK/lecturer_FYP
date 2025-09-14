@@ -2233,4 +2233,31 @@ router.get('/student/:studentId/records', async (req, res) => {
   }
 });
 
+// Get recent attendance sessions (must be last to avoid route conflicts)
+router.get('/sessions', async (req, res) => {
+  try {
+    const { client, db } = await getDatabase();
+    
+    // Get the 10 most recent sessions
+    const recentSessions = await db.collection('attendance_sessions')
+      .find({})
+      .sort({ createdAt: -1 })
+      .limit(10)
+      .toArray();
+    
+    await client.close();
+    
+    res.json({
+      success: true,
+      sessions: recentSessions
+    });
+  } catch (error) {
+    console.error('Error getting recent sessions:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 export default router;
