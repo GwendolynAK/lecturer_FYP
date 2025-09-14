@@ -48,7 +48,7 @@ router.get('/debug/database-structure', async (req, res) => {
   }
 });
 
-// Create attendance session
+// Create attendance session (called when starting marking)
 router.post('/sessions', async (req, res) => {
   try {
     const { courseId, courseCode, program, level, location, lecturerName, academicYear, semester } = req.body;
@@ -56,7 +56,7 @@ router.post('/sessions', async (req, res) => {
     if (!courseCode || !program || !level) {
       return res.status(400).json({
         success: false,
-        error: 'Course Code, Program, and Level are all required for unique course identification'
+        error: 'Course Code, Program, and Level are all required'
       });
     }
 
@@ -86,7 +86,7 @@ router.post('/sessions', async (req, res) => {
     // Generate unique session ID
     const sessionId = `ATT_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
-    // Create session document
+    // Create session document with active status
     const sessionData = {
       sessionId,
       courseId: actualCourseId,
@@ -95,7 +95,7 @@ router.post('/sessions', async (req, res) => {
       level: level || 'Unknown Level',
       date: new Date(),
       startTime: new Date(),
-      endTime: new Date(Date.now() + 2 * 60 * 60 * 1000), // 2 hours from now
+      endTime: null, // Will be set when session is completed
       location: location || 'Main Campus',
       lecturerName: lecturerName || 'Dr. Lecturer',
       academicYear: academicYear || '2024/2025',
@@ -119,6 +119,112 @@ router.post('/sessions', async (req, res) => {
     });
   } catch (error) {
     console.error('Error creating attendance session:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Update attendance session status
+router.put('/sessions/:sessionId', async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const { status } = req.body;
+    
+    if (!sessionId || !status) {
+      return res.status(400).json({
+        success: false,
+        error: 'Session ID and status are required'
+      });
+    }
+
+    const { client, db } = await getDatabase();
+    
+    // Update session status
+    const updateData = {
+      status: status,
+      updatedAt: new Date()
+    };
+    
+    // If completing the session, set endTime
+    if (status === 'completed') {
+      updateData.endTime = new Date();
+    }
+    
+    const result = await db.collection('attendance_sessions').updateOne(
+      { sessionId: sessionId },
+      { $set: updateData }
+    );
+    
+    if (result.matchedCount === 0) {
+      await client.close();
+      return res.status(404).json({
+        success: false,
+        error: 'Session not found'
+      });
+    }
+    
+    await client.close();
+    
+    res.json({
+      success: true,
+      message: `Session ${sessionId} updated to ${status}`
+    });
+  } catch (error) {
+    console.error('Error updating attendance session:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Get real-time attendance count for a session
+router.get('/sessions/:sessionId/count', async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    
+    if (!sessionId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Session ID is required'
+      });
+    }
+
+    const { client, db } = await getDatabase();
+    
+    // Count attendance records for this session
+    const attendanceCount = await db.collection('attendance_records').countDocuments({
+      sessionId: sessionId
+    });
+    
+    // Get session details
+    const session = await db.collection('attendance_sessions').findOne({
+      sessionId: sessionId
+    });
+    
+    if (!session) {
+      await client.close();
+      return res.status(404).json({
+        success: false,
+        error: 'Session not found'
+      });
+    }
+    
+    await client.close();
+    
+    res.json({
+      success: true,
+      sessionId: sessionId,
+      attendanceCount: attendanceCount,
+      sessionStatus: session.status,
+      courseCode: session.courseCode,
+      program: session.program,
+      level: session.level
+    });
+  } catch (error) {
+    console.error('Error getting attendance count:', error);
     res.status(500).json({
       success: false,
       error: error.message
