@@ -2263,6 +2263,66 @@ router.get('/student/:studentId/records', async (req, res) => {
   }
 });
 
+// Get attendance records for a specific session
+router.get('/sessions/:sessionId/records', async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    
+    if (!sessionId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Session ID is required'
+      });
+    }
+
+    const { client, db } = await getDatabase();
+    
+    // Get attendance records for this session
+    const records = await db.collection('attendance_records')
+      .find({ sessionId: sessionId })
+      .sort({ markedAt: -1 })
+      .toArray();
+    
+    // Get session details
+    const session = await db.collection('attendance_sessions').findOne({
+      sessionId: sessionId
+    });
+    
+    if (!session) {
+      await client.close();
+      return res.status(404).json({
+        success: false,
+        error: 'Session not found'
+      });
+    }
+    
+    await client.close();
+    
+    res.json({
+      success: true,
+      sessionId: sessionId,
+      session: {
+        courseCode: session.courseCode,
+        program: session.program,
+        level: session.level,
+        location: session.location,
+        lecturerName: session.lecturerName,
+        status: session.status,
+        startTime: session.startTime,
+        endTime: session.endTime
+      },
+      records: records,
+      totalRecords: records.length
+    });
+  } catch (error) {
+    console.error('Error getting session records:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 // Get recent attendance sessions (must be last to avoid route conflicts)
 router.get('/sessions', async (req, res) => {
   try {
