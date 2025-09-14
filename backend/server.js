@@ -195,6 +195,34 @@ io.on("connection", (socket) => {
     }
   });
 
+  // Listen for sessionStarted events from admin
+  socket.on("sessionStarted", (data) => {
+    // Only the admin can start sessions
+    if (socket.id === adminSocketId) {
+      // Broadcast session data to all connected students
+      io.emit("sessionStarted", data);
+      console.log(`📡 Admin ${socket.id} started session: ${data.sessionId}`);
+      console.log(`📡 Broadcasting to all students:`, data);
+    } else {
+      console.log(`Non-admin ${socket.id} attempted to start session`);
+      socket.emit("error", { message: "Only admin can start sessions" });
+    }
+  });
+
+  // Listen for sessionEnded events from admin
+  socket.on("sessionEnded", (data) => {
+    // Only the admin can end sessions
+    if (socket.id === adminSocketId) {
+      // Broadcast session end to all connected students
+      io.emit("sessionEnded", data);
+      console.log(`📡 Admin ${socket.id} ended session: ${data.sessionId}`);
+      console.log(`📡 Broadcasting session end to all students`);
+    } else {
+      console.log(`Non-admin ${socket.id} attempted to end session`);
+      socket.emit("error", { message: "Only admin can end sessions" });
+    }
+  });
+
   socket.on("disconnect", () => {
     console.log(`Client disconnected: ${socket.id}`);
 
