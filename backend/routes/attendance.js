@@ -48,6 +48,36 @@ router.get('/debug/database-structure', async (req, res) => {
   }
 });
 
+// Debug endpoint to get recent attendance records for a student
+router.get('/debug/recent-records/:studentId', async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    const { client, db } = await getDatabase();
+    
+    // Get the 10 most recent attendance records for this student
+    const recentRecords = await db.collection('attendance_records')
+      .find({ studentId: studentId })
+      .sort({ createdAt: -1 })
+      .limit(10)
+      .toArray();
+    
+    await client.close();
+    
+    res.json({
+      success: true,
+      studentId: studentId,
+      recentRecords: recentRecords,
+      count: recentRecords.length
+    });
+  } catch (error) {
+    console.error('Error getting recent records:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 // Create attendance session (called when starting marking)
 router.post('/sessions', async (req, res) => {
   try {
