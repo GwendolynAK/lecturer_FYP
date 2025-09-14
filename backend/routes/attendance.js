@@ -192,8 +192,7 @@ router.put('/sessions/:sessionId', async (req, res) => {
       }
       
       // Get all enrolled students for this course
-      const enrolledStudents = await db.collection('course_enrollments').find({
-        courseCode: session.courseCode,
+      const enrolledStudents = await db.collection('studentsNormalized').find({
         program: session.program,
         level: session.level
       }).toArray();
@@ -207,17 +206,17 @@ router.put('/sessions/:sessionId', async (req, res) => {
       const presentStudentIds = presentStudents.map(record => record.studentId);
       
       // Find students who didn't mark attendance
-      const absentStudents = enrolledStudents.filter(enrollment => 
-        !presentStudentIds.includes(enrollment.studentId)
+      const absentStudents = enrolledStudents.filter(student => 
+        !presentStudentIds.includes(student.studentId)
       );
       
       // Create absent records for students who didn't mark attendance
       if (absentStudents.length > 0) {
-        const absentRecords = absentStudents.map(enrollment => ({
+        const absentRecords = absentStudents.map(student => ({
           sessionId: sessionId,
-          studentId: enrollment.studentId,
-          studentName: enrollment.studentName,
-          indexNumber: enrollment.indexNumber,
+          studentId: student.studentId,
+          studentName: student.studentName,
+          indexNumber: student.indexNumber,
           status: 'absent',
           markedAt: new Date(),
           courseCode: session.courseCode,
