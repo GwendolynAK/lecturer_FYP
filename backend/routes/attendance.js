@@ -2655,33 +2655,72 @@ router.get('/sessions/:sessionId/records', async (req, res) => {
       });
     }
     
-    // Enrich with student details for both present and absent
-    const studentIds = [...new Set(rawRecords.map(r => r.studentId).filter(Boolean))];
-    let students = [];
-    if (studentIds.length > 0) {
-      students = await db.collection('studentsNormalized').find({ studentId: { $in: studentIds } }).toArray();
-    }
-    const studentMap = new Map(students.map(s => [s.studentId, s]));
-
-    const records = rawRecords.map(r => {
-      const s = studentMap.get(r.studentId) || {};
-      const fullName = s.fullName || r.studentName || '';
-      const nameParts = fullName ? fullName.split(' ') : [];
-      const firstName = nameParts.length > 0 ? nameParts[0] : '';
-      const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
-      const ad = r.attendanceDate || r.markedAt || null;
-      const dateStr = ad ? new Date(ad).toISOString().split('T')[0] : null;
-      const timeStr = ad ? new Date(ad).toTimeString().split(' ')[0].substring(0,5) : null;
-
-      return {
-        ...r,
-        studentName: fullName || undefined,
-        firstName: firstName || undefined,
-        lastName: lastName || undefined,
-        indexNumber: r.indexNumber || s.indexNumber || s.studentId || r.studentId,
-        date: dateStr,
-        time: timeStr
-      };
+    // Get all enrolled students for this course
+    const enrolledStudents = await db.collection('studentsNormalized')
+      .find({
+        program: session.program,
+        level: session.level
+      })
+      .project({
+        _id: 0,
+        studentId: 1,
+        studentName: '$fullName',
+        indexNumber: { $ifNull: ['$indexNumber', '$studentId'] }
+      })
+      .toArray();
+    
+    // Create a map of existing records
+    const existingRecords = new Map(rawRecords.map(r => [r.studentId, r]));
+    
+    // Create records for all enrolled students
+    const records = enrolledStudents.map(student => {
+      const existingRecord = existingRecords.get(student.studentId);
+      if (existingRecord) {
+        // Use existing record
+        const fullName = student.studentName || existingRecord.studentName || '';
+        const nameParts = fullName ? fullName.split(' ') : [];
+        const firstName = nameParts.length > 0 ? nameParts[0] : '';
+        const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
+        const ad = existingRecord.attendanceDate || existingRecord.markedAt || null;
+        const dateStr = ad ? new Date(ad).toISOString().split('T')[0] : null;
+        const timeStr = ad ? new Date(ad).toTimeString().split(' ')[0].substring(0,5) : null;
+        
+        return {
+          ...existingRecord,
+          studentName: fullName || undefined,
+          firstName: firstName || undefined,
+          lastName: lastName || undefined,
+          indexNumber: existingRecord.indexNumber || student.indexNumber,
+          date: dateStr,
+          time: timeStr
+        };
+      } else {
+        // Create absent record
+        const now = new Date();
+        const nameParts = student.studentName ? student.studentName.split(' ') : [];
+        const firstName = nameParts.length > 0 ? nameParts[0] : '';
+        const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
+        
+        return {
+          sessionId: sessionId,
+          studentId: student.studentId,
+          studentName: student.studentName || '',
+          firstName: firstName || undefined,
+          lastName: lastName || undefined,
+          indexNumber: student.indexNumber,
+          status: 'absent',
+          attendanceDate: now,
+          markedAt: now,
+          markingMethod: 'auto_absent',
+          courseCode: session.courseCode,
+          program: session.program,
+          level: session.level,
+          academicYear: session.academicYear,
+          semester: session.semester,
+          date: now.toISOString().split('T')[0],
+          time: now.toTimeString().split(' ')[0].substring(0,5)
+        };
+      }
     });
 
     await client.close();
@@ -2714,13 +2753,16 @@ router.get('/sessions/:sessionId/records', async (req, res) => {
 // Get recent attendance sessions (must be last to avoid route conflicts)
 router.get('/sessions', async (req, res) => {
   try {
-    const { academicYear } = req.query;
+    const { courseCode, program, level } = req.query;
     const { client, db } = await getDatabase();
     
-    // Build query to filter by academicYear if provided
-    const query = academicYear ? { academicYear } : {};
+    // Build query to filter by course if provided
+    const query = {};
+    if (courseCode) query.courseCode = courseCode;
+    if (program) query.program = program;
+    if (level) query.level = level;
     
-    // Get the 10 most recent sessions for the academic year
+    // Get the 10 most recent sessions for this course
     const recentSessions = await db.collection('attendance_sessions')
       .find(query)
       .sort({ createdAt: -1 })
