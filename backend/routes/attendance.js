@@ -190,12 +190,37 @@ router.put('/sessions/:sessionId', async (req, res) => {
           error: 'Session not found'
         });
       }
-      
-      // Get all enrolled students for this course
-      const enrolledStudents = await db.collection('studentsNormalized').find({
-        program: session.program,
-        level: session.level
-      }).toArray();
+
+      // Resolve course ObjectId (already stored on session)
+      const courseObjectId = session.courseId ? new ObjectId(session.courseId) : null;
+
+      // Get all enrolled students for this specific course, academicYear and semester, with student details joined
+      const enrolledStudents = await db.collection('course_enrollments').aggregate([
+        {
+          $match: {
+            ...(courseObjectId ? { courseId: courseObjectId } : {}),
+            ...(session.academicYear ? { academicYear: session.academicYear } : {}),
+            ...(session.semester ? { semester: session.semester } : {})
+          }
+        },
+        {
+          $lookup: {
+            from: 'studentsNormalized',
+            localField: 'studentId',
+            foreignField: 'studentId',
+            as: 'student'
+          }
+        },
+        { $addFields: { student: { $arrayElemAt: ['$student', 0] } } },
+        {
+          $project: {
+            _id: 0,
+            studentId: 1,
+            studentName: { $ifNull: ['$student.fullName', '$student.studentName'] },
+            indexNumber: { $ifNull: ['$student.indexNumber', '$student.studentId'] }
+          }
+        }
+      ]).toArray();
       
       // Get students who already marked attendance (present)
       const presentStudents = await db.collection('attendance_records').find({
@@ -206,24 +231,28 @@ router.put('/sessions/:sessionId', async (req, res) => {
       const presentStudentIds = presentStudents.map(record => record.studentId);
       
       // Find students who didn't mark attendance
-      const absentStudents = enrolledStudents.filter(student => 
-        !presentStudentIds.includes(student.studentId)
-      );
+      const absentStudents = enrolledStudents.filter(student => !presentStudentIds.includes(student.studentId));
       
       // Create absent records for students who didn't mark attendance
       if (absentStudents.length > 0) {
+        const now = new Date();
         const absentRecords = absentStudents.map(student => ({
           sessionId: sessionId,
+          courseId: courseObjectId || undefined,
           studentId: student.studentId,
-          studentName: student.studentName,
-          indexNumber: student.indexNumber,
+          studentName: student.studentName || '',
+          indexNumber: student.indexNumber || student.studentId,
           status: 'absent',
-          markedAt: new Date(),
+          attendanceDate: now,
+          markedAt: now,
+          markingMethod: 'auto_absent',
           courseCode: session.courseCode,
           program: session.program,
           level: session.level,
           academicYear: session.academicYear,
-          semester: session.semester
+          semester: session.semester,
+          createdAt: now,
+          updatedAt: now
         }));
         
         await db.collection('attendance_records').insertMany(absentRecords);
