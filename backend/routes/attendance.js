@@ -2419,7 +2419,7 @@ router.get('/sessions/:sessionId/records', async (req, res) => {
     const { client, db } = await getDatabase();
     
     // Get attendance records for this session
-    const records = await db.collection('attendance_records')
+    const rawRecords = await db.collection('attendance_records')
       .find({ sessionId: sessionId })
       .sort({ markedAt: -1 })
       .toArray();
@@ -2437,6 +2437,35 @@ router.get('/sessions/:sessionId/records', async (req, res) => {
       });
     }
     
+    // Enrich with student details for both present and absent
+    const studentIds = [...new Set(rawRecords.map(r => r.studentId).filter(Boolean))];
+    let students = [];
+    if (studentIds.length > 0) {
+      students = await db.collection('studentsNormalized').find({ studentId: { $in: studentIds } }).toArray();
+    }
+    const studentMap = new Map(students.map(s => [s.studentId, s]));
+
+    const records = rawRecords.map(r => {
+      const s = studentMap.get(r.studentId) || {};
+      const fullName = s.fullName || r.studentName || '';
+      const nameParts = fullName ? fullName.split(' ') : [];
+      const firstName = nameParts.length > 0 ? nameParts[0] : '';
+      const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
+      const ad = r.attendanceDate || r.markedAt || null;
+      const dateStr = ad ? new Date(ad).toISOString().split('T')[0] : null;
+      const timeStr = ad ? new Date(ad).toTimeString().split(' ')[0].substring(0,5) : null;
+
+      return {
+        ...r,
+        studentName: fullName || undefined,
+        firstName: firstName || undefined,
+        lastName: lastName || undefined,
+        indexNumber: r.indexNumber || s.indexNumber || s.studentId || r.studentId,
+        date: dateStr,
+        time: timeStr
+      };
+    });
+
     await client.close();
     
     res.json({
