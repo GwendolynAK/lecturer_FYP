@@ -1306,25 +1306,48 @@ router.get('/academic-info', async (req, res) => {
 // GET /api/attendance/available-months - Get all available months from attendance data
 router.get('/available-months', async (req, res) => {
   try {
+    const { courseCode, program, level, academicYear } = req.query;
     const { client, db } = await getDatabase();
 
-    // Get all unique months from attendance records
-    const months = await db.collection('attendance_records')
-      .aggregate([
-        {
-          $group: {
-            _id: {
-              year: { $year: '$attendanceDate' },
-              month: { $month: '$attendanceDate' }
-            },
-            count: { $sum: 1 }
-          }
-        },
-        {
-          $sort: { '_id.year': 1, '_id.month': 1 }
+    // Optional filtering
+    let matchStage = {};
+    if (courseCode && program && level) {
+      const course = await db.collection('courses').findOne({ courseCode, program, level });
+      if (course) {
+        matchStage = { courseId: course._id };
+      }
+    }
+
+    // If academicYear provided (format YYYY/YYYY), constrain date range Aug 1 -> Jul 31
+    if (academicYear && typeof academicYear === 'string' && academicYear.includes('/')) {
+      const [startStr] = academicYear.split('/');
+      const startYear = parseInt(startStr, 10);
+      if (!isNaN(startYear)) {
+        const startDate = new Date(Date.UTC(startYear, 7, 1, 0, 0, 0)); // Aug 1 startYear
+        const endDate = new Date(Date.UTC(startYear + 1, 6, 31, 23, 59, 59, 999)); // Jul 31 next year
+        matchStage.attendanceDate = { $gte: startDate, $lte: endDate };
+      }
+    }
+
+    // Get unique months (optionally scoped to course)
+    const pipeline = [];
+    if (Object.keys(matchStage).length > 0) {
+      pipeline.push({ $match: matchStage });
+    }
+    pipeline.push(
+      {
+        $group: {
+          _id: {
+            year: { $year: '$attendanceDate' },
+            month: { $month: '$attendanceDate' }
+          },
+          count: { $sum: 1 }
         }
-      ])
-      .toArray();
+      },
+      { $sort: { '_id.year': 1, '_id.month': 1 } }
+    );
+
+    const months = await db.collection('attendance_records').aggregate(pipeline).toArray();
 
     const monthNames = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 
                        'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
