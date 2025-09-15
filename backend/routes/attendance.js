@@ -502,6 +502,108 @@ router.post('/mark', async (req, res) => {
   }
 });
 
+// Get latest attendance data for each course
+router.get('/student/:studentId/latest', async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    const { client, db } = await getDatabase();
+
+    // Get student information
+    const student = await db.collection('studentsNormalized').findOne({ studentId });
+    if (!student) {
+      await client.close();
+      return res.status(404).json({
+        success: false,
+        message: 'Student not found'
+      });
+    }
+
+    // Get student's courses
+    const courses = await db.collection('courses').find({
+      program: student.program,
+      level: student.level
+    }).toArray();
+
+    console.log('📚 Found', courses.length, 'courses for student');
+
+    // For each course, get the latest week's attendance
+    const latestData = {};
+
+    for (const course of courses) {
+      // Get latest attendance record for this course
+      const latestRecord = await db.collection('attendance_records')
+        .find({ 
+          studentId,
+          courseId: course._id
+        })
+        .sort({ attendanceDate: -1 })
+        .limit(1)
+        .toArray();
+
+      if (latestRecord.length === 0) {
+        // No attendance records for this course
+        latestData[course.courseCode] = {
+          courseCode: course.courseCode,
+          courseTitle: course.title || course.courseCode,
+          hasData: false
+        };
+        continue;
+      }
+
+      // Get all records from the same week as the latest record
+      const latestDate = new Date(latestRecord[0].attendanceDate);
+      const weekStart = new Date(latestDate);
+      weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+      weekStart.setHours(0, 0, 0, 0);
+      
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekEnd.getDate() + 6);
+      weekEnd.setHours(23, 59, 59, 999);
+
+      const weekRecords = await db.collection('attendance_records')
+        .find({
+          studentId,
+          courseId: course._id,
+          attendanceDate: {
+            $gte: weekStart,
+            $lte: weekEnd
+          }
+        })
+        .toArray();
+
+      // Calculate attendance for this week
+      const present = weekRecords.filter(r => r.status === 'present').length;
+      const absent = weekRecords.filter(r => r.status === 'absent').length;
+      const total = weekRecords.length;
+
+      latestData[course.courseCode] = {
+        courseCode: course.courseCode,
+        courseTitle: course.title || course.courseCode,
+        present,
+        absent,
+        total,
+        attendancePercentage: Math.round((present / total) * 100),
+        hasData: true,
+        latestDate
+      };
+    }
+
+    await client.close();
+
+    res.json({
+      success: true,
+      data: Object.values(latestData)
+    });
+
+  } catch (error) {
+    console.error('Error getting latest attendance:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 // Get attendance records for a student
 router.get('/student/:studentId/records', async (req, res) => {
   try {
