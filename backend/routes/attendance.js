@@ -2714,11 +2714,15 @@ router.get('/sessions/:sessionId/records', async (req, res) => {
 // Get recent attendance sessions (must be last to avoid route conflicts)
 router.get('/sessions', async (req, res) => {
   try {
+    const { academicYear } = req.query;
     const { client, db } = await getDatabase();
     
-    // Get the 10 most recent sessions
+    // Build query to filter by academicYear if provided
+    const query = academicYear ? { academicYear } : {};
+    
+    // Get the 10 most recent sessions for the academic year
     const recentSessions = await db.collection('attendance_sessions')
-      .find({})
+      .find(query)
       .sort({ createdAt: -1 })
       .limit(10)
       .toArray();
