@@ -1375,6 +1375,50 @@ router.get('/available-months', async (req, res) => {
   }
 });
 
+// Get latest period (academicYear and month) for a specific course
+router.get('/latest-period', async (req, res) => {
+  try {
+    const { courseCode, program, level } = req.query;
+    if (!courseCode || !program || !level) {
+      return res.status(400).json({ success: false, message: 'courseCode, program and level are required' });
+    }
+
+    const { client, db } = await getDatabase();
+    const course = await db.collection('courses').findOne({ courseCode, program, level });
+    if (!course) {
+      await client.close();
+      return res.status(404).json({ success: false, message: 'Course not found' });
+    }
+
+    const latestRecord = await db.collection('attendance_records')
+      .find({ courseId: course._id })
+      .sort({ attendanceDate: -1 })
+      .limit(1)
+      .toArray();
+
+    if (latestRecord.length === 0) {
+      await client.close();
+      return res.json({ success: true, data: null });
+    }
+
+    const d = latestRecord[0].attendanceDate ? new Date(latestRecord[0].attendanceDate) : null;
+    const monthNames = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+    const month = d ? monthNames[d.getUTCMonth()] : null;
+    const monthNumber = d ? (d.getUTCMonth() + 1) : null;
+    const year = d ? d.getUTCFullYear() : null;
+    let academicYear = null;
+    if (d) {
+      academicYear = monthNumber >= 8 ? `${year}/${year + 1}` : `${year - 1}/${year}`;
+    }
+
+    await client.close();
+    return res.json({ success: true, data: { academicYear, month, monthNumber, year } });
+  } catch (error) {
+    console.error('Error getting latest period:', error);
+    return res.status(500).json({ success: false, message: 'Error getting latest period', error: error.message });
+  }
+});
+
 // GET /api/attendance/monthly-attendance - Get monthly attendance data for a course
 router.get('/monthly-attendance/:courseCode', async (req, res) => {
   const startTime = Date.now();
