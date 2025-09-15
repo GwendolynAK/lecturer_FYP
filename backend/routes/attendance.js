@@ -468,6 +468,12 @@ router.post('/mark', async (req, res) => {
       attendanceDate: new Date(),
       markedAt: new Date(),
       markingMethod: markingMethod || 'qr_code',
+      // include course/session metadata for downstream consumers (calendar, reports)
+      courseCode: session.courseCode,
+      program: session.program,
+      level: session.level,
+      academicYear: session.academicYear,
+      semester: session.semester,
       isVerified: true,
       notes: null,
       createdAt: new Date(),
@@ -489,6 +495,56 @@ router.post('/mark', async (req, res) => {
     });
   } catch (error) {
     console.error('Error marking attendance:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Get attendance records for a student
+router.get('/student/:studentId/records', async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    const { client, db } = await getDatabase();
+    
+    // Get all attendance records for this student and join with courses to get courseCode
+    const records = await db.collection('attendance_records').aggregate([
+      { $match: { studentId } },
+      {
+        $lookup: {
+          from: 'courses',
+          let: { recordCourseId: { $toObjectId: '$courseId' } },
+          pipeline: [
+            { $match: { $expr: { $eq: ['$_id', '$$recordCourseId'] } } },
+            { $project: { courseCode: 1, program: 1, level: 1 } }
+          ],
+          as: 'course'
+        }
+      },
+      { $unwind: '$course' },
+      {
+        $addFields: {
+          courseCode: '$course.courseCode',
+          program: '$course.program',
+          level: '$course.level'
+        }
+      },
+      { $sort: { attendanceDate: -1 } }
+    ]).toArray();
+    
+    console.log(`📅 Found ${records.length} records for student ${studentId}`);
+    
+    await client.close();
+    
+    res.json({
+      success: true,
+      data: {
+        records
+      }
+    });
+  } catch (error) {
+    console.error('Error getting student records:', error);
     res.status(500).json({
       success: false,
       error: error.message
