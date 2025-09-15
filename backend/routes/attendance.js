@@ -201,33 +201,19 @@ router.put('/sessions/:sessionId', async (req, res) => {
       // Resolve course ObjectId (already stored on session)
       const courseObjectId = session.courseId ? new ObjectId(session.courseId) : null;
 
-      // Get all enrolled students for this specific course, academicYear and semester, with student details joined
-      const enrolledStudents = await db.collection('course_enrollments').aggregate([
-        {
-          $match: {
-            ...(courseObjectId ? { courseId: courseObjectId } : {}),
-            ...(session.academicYear ? { academicYear: session.academicYear } : {}),
-            ...(session.semester ? { semester: session.semester } : {})
-          }
-        },
-        {
-          $lookup: {
-            from: 'studentsNormalized',
-            localField: 'studentId',
-            foreignField: 'studentId',
-            as: 'student'
-          }
-        },
-        { $addFields: { student: { $arrayElemAt: ['$student', 0] } } },
-        {
-          $project: {
-            _id: 0,
-            studentId: 1,
-            studentName: { $ifNull: ['$student.fullName', '$student.studentName'] },
-            indexNumber: { $ifNull: ['$student.indexNumber', '$student.studentId'] }
-          }
-        }
-      ]).toArray();
+      // Get all enrolled students for this course from studentsNormalized
+      const enrolledStudents = await db.collection('studentsNormalized')
+        .find({
+          program: session.program,
+          level: session.level
+        })
+        .project({
+          _id: 0,
+          studentId: 1,
+          studentName: '$fullName',
+          indexNumber: { $ifNull: ['$indexNumber', '$studentId'] }
+        })
+        .toArray();
       
       // Get students who already marked attendance (present)
       const presentStudents = await db.collection('attendance_records').find({
