@@ -288,6 +288,69 @@ router.put('/sessions/:sessionId', async (req, res) => {
   }
 });
 
+// Enrich existing absent records for a session with student details (maintenance)
+router.post('/sessions/:sessionId/enrich-absent', async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    if (!sessionId) {
+      return res.status(400).json({ success: false, error: 'Session ID is required' });
+    }
+
+    const { client, db } = await getDatabase();
+
+    const session = await db.collection('attendance_sessions').findOne({ sessionId });
+    if (!session) {
+      await client.close();
+      return res.status(404).json({ success: false, error: 'Session not found' });
+    }
+
+    // Find absent records with missing details
+    const missingRecords = await db.collection('attendance_records').find({
+      sessionId,
+      status: 'absent',
+      $or: [{ studentName: { $in: [null, ''] } }, { indexNumber: { $in: [null, ''] } }]
+    }).toArray();
+
+    if (missingRecords.length === 0) {
+      await client.close();
+      return res.json({ success: true, message: 'No absent records needing enrichment', updated: 0 });
+    }
+
+    const studentIds = [...new Set(missingRecords.map(r => r.studentId))];
+
+    // Lookup student details
+    const students = await db.collection('studentsNormalized').find({ studentId: { $in: studentIds } }).toArray();
+    const studentMap = new Map(students.map(s => [s.studentId, s]));
+
+    let updated = 0;
+    const now = new Date();
+    for (const rec of missingRecords) {
+      const s = studentMap.get(rec.studentId) || {};
+      const update = {
+        updatedAt: now
+      };
+      if (!rec.studentName && s.fullName) update.studentName = s.fullName;
+      if (!rec.indexNumber) update.indexNumber = s.indexNumber || s.studentId || rec.studentId;
+      if (!rec.attendanceDate) update.attendanceDate = rec.markedAt || now;
+      if (!rec.courseId && session.courseId) update.courseId = new ObjectId(session.courseId);
+      if (!rec.courseCode && session.courseCode) update.courseCode = session.courseCode;
+      if (!rec.program && session.program) update.program = session.program;
+      if (!rec.level && session.level) update.level = session.level;
+      if (!rec.academicYear && session.academicYear) update.academicYear = session.academicYear;
+      if (typeof rec.semester === 'undefined' && typeof session.semester !== 'undefined') update.semester = session.semester;
+
+      const result = await db.collection('attendance_records').updateOne({ _id: rec._id }, { $set: update });
+      if (result.modifiedCount > 0) updated++;
+    }
+
+    await client.close();
+    return res.json({ success: true, message: 'Enrichment completed', updated });
+  } catch (error) {
+    console.error('Error enriching absent records:', error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Get real-time attendance count for a session
 router.get('/sessions/:sessionId/count', async (req, res) => {
   try {
