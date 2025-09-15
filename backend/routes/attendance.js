@@ -128,7 +128,14 @@ router.post('/sessions', async (req, res) => {
       endTime: null, // Will be set when session is completed
       location: location || 'Main Campus',
       lecturerName: lecturerName || 'Dr. Lecturer',
-      academicYear: academicYear || '2024/2025',
+      // Calculate current academic year based on date
+      academicYear: academicYear || (() => {
+        const now = new Date();
+        const month = now.getMonth() + 1; // 1-12
+        const year = now.getFullYear();
+        // Academic year starts in August
+        return month >= 8 ? `${year}/${year + 1}` : `${year - 1}/${year}`;
+      })(),
       semester: semester || 1,
       status: 'active',
       createdAt: new Date(),
