@@ -1,5 +1,6 @@
 import express from 'express';
 import { MongoClient, ObjectId } from 'mongodb';
+import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -651,7 +652,9 @@ router.get('/student/:studentId/records', async (req, res) => {
 async function getDatabase() {
   const client = new MongoClient(process.env.MONGO_URI);
   await client.connect();
-  return { client, db: client.db(process.env.DB_NAME) };
+  const db = client.db(process.env.DB_NAME);
+  console.log('🔌 Connected to database:', process.env.DB_NAME);
+  return { client, db };
 }
 
 // GET /api/attendance/courses - Get all courses with student counts
@@ -2558,9 +2561,9 @@ router.get('/student/:studentId/records', async (req, res) => {
       });
     }
 
-    const client = new MongoClient(process.env.MONGODB_URI);
+    const client = new MongoClient(process.env.MONGO_URI);
     await client.connect();
-    const db = client.db('attendance_system');
+    const db = client.db(process.env.DB_NAME);
 
     // Get all attendance records for this student
     const attendanceRecords = await db.collection('attendanceRecords').find({
@@ -2762,12 +2765,11 @@ router.post('/mark-by-session', async (req, res) => {
       });
     }
 
-    const { client, db } = await getDatabase();
-
     // 1. Find the attendance session to get course information
-    const session = await db.collection('attendance_sessions').findOne({ sessionId });
+    const AttendanceSession = mongoose.model('AttendanceSession');
+    const session = await AttendanceSession.findOne({ sessionId });
+    
     if (!session) {
-      await client.close();
       return res.status(404).json({
         success: false,
         error: 'Attendance session not found'
@@ -2776,30 +2778,23 @@ router.post('/mark-by-session', async (req, res) => {
 
     // 2. Validate that the courseCode matches (if provided)
     if (courseCode && session.courseCode !== courseCode) {
-      await client.close();
       return res.status(400).json({
         success: false,
         error: 'Course code mismatch'
       });
     }
 
-    // 3. Find the course to get the courseId
-    const course = await db.collection('courses').findOne({
-      courseCode: session.courseCode,
-      program: session.program,
-      level: session.level
-    });
-
-    if (!course) {
-      await client.close();
-      return res.status(404).json({
+    // 3. Check if session is active
+    if (!session.isActive()) {
+      return res.status(400).json({
         success: false,
-        error: 'Course not found'
+        error: 'Session is not active'
       });
     }
 
     // 4. Check if student is enrolled in this course
-    const enrollment = await db.collection('courseEnrollments').findOne({
+    const CourseEnrollment = mongoose.model('CourseEnrollment');
+    const enrollment = await CourseEnrollment.findOne({
       studentId: studentId,
       courseCode: session.courseCode,
       program: session.program,
@@ -2807,7 +2802,6 @@ router.post('/mark-by-session', async (req, res) => {
     });
 
     if (!enrollment) {
-      await client.close();
       return res.status(403).json({
         success: false,
         error: 'Student is not enrolled in this course'
@@ -2815,13 +2809,13 @@ router.post('/mark-by-session', async (req, res) => {
     }
 
     // 5. Check if attendance is already marked for this session
-    const existingAttendance = await db.collection('attendance_records').findOne({
+    const Attendance = mongoose.model('Attendance');
+    const existingAttendance = await Attendance.findOne({
       studentId: studentId,
       sessionId: sessionId
     });
 
     if (existingAttendance) {
-      await client.close();
       return res.status(409).json({
         success: false,
         error: 'Attendance already marked for this session'
@@ -2829,7 +2823,7 @@ router.post('/mark-by-session', async (req, res) => {
     }
 
     // 6. Create attendance record
-    const attendanceRecord = {
+    const attendanceRecord = new Attendance({
       studentId: studentId,
       studentName: enrollment.studentFullName,
       studentEmail: `${studentId}@gctu.edu.gh`, // Generate email from studentId
@@ -2847,32 +2841,19 @@ router.post('/mark-by-session', async (req, res) => {
       markingMethod: markingMethod || 'qr',
       notes: null,
       isVerified: true,
-      sessionId: sessionId,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
+      sessionId: sessionId
+    });
 
-    const result = await db.collection('attendance_records').insertOne(attendanceRecord);
+    await attendanceRecord.save();
 
     // 7. Update session statistics
-    await db.collection('attendance_sessions').updateOne(
-      { sessionId: sessionId },
-      { 
-        $inc: { 
-          'statistics.totalStudents': 1,
-          [`statistics.${status}Count`]: 1
-        },
-        $set: { updatedAt: new Date() }
-      }
-    );
-
-    await client.close();
+    await session.updateStatistics();
 
     res.json({
       success: true,
       message: 'Attendance marked successfully',
       data: {
-        attendanceId: result.insertedId,
+        attendanceId: attendanceRecord._id,
         studentId: studentId,
         courseCode: session.courseCode,
         courseTitle: session.courseTitle,
