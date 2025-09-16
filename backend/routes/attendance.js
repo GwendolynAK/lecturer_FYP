@@ -2750,6 +2750,147 @@ router.get('/sessions/:sessionId/records', async (req, res) => {
   }
 });
 
+// Mark attendance by session ID
+router.post('/mark-by-session', async (req, res) => {
+  try {
+    const { studentId, sessionId, courseCode, status = 'present', markingMethod, location } = req.body;
+
+    if (!studentId || !sessionId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Student ID and Session ID are required'
+      });
+    }
+
+    const { client, db } = await getDatabase();
+
+    // 1. Find the attendance session to get course information
+    const session = await db.collection('attendance_sessions').findOne({ sessionId });
+    if (!session) {
+      await client.close();
+      return res.status(404).json({
+        success: false,
+        error: 'Attendance session not found'
+      });
+    }
+
+    // 2. Validate that the courseCode matches (if provided)
+    if (courseCode && session.courseCode !== courseCode) {
+      await client.close();
+      return res.status(400).json({
+        success: false,
+        error: 'Course code mismatch'
+      });
+    }
+
+    // 3. Find the course to get the courseId
+    const course = await db.collection('courses').findOne({
+      courseCode: session.courseCode,
+      program: session.program,
+      level: session.level
+    });
+
+    if (!course) {
+      await client.close();
+      return res.status(404).json({
+        success: false,
+        error: 'Course not found'
+      });
+    }
+
+    // 4. Check if student is enrolled in this course
+    const enrollment = await db.collection('courseEnrollments').findOne({
+      studentId: studentId,
+      courseCode: session.courseCode,
+      program: session.program,
+      level: session.level
+    });
+
+    if (!enrollment) {
+      await client.close();
+      return res.status(403).json({
+        success: false,
+        error: 'Student is not enrolled in this course'
+      });
+    }
+
+    // 5. Check if attendance is already marked for this session
+    const existingAttendance = await db.collection('attendance_records').findOne({
+      studentId: studentId,
+      sessionId: sessionId
+    });
+
+    if (existingAttendance) {
+      await client.close();
+      return res.status(409).json({
+        success: false,
+        error: 'Attendance already marked for this session'
+      });
+    }
+
+    // 6. Create attendance record
+    const attendanceRecord = {
+      studentId: studentId,
+      studentName: enrollment.studentFullName,
+      studentEmail: `${studentId}@gctu.edu.gh`, // Generate email from studentId
+      courseCode: session.courseCode,
+      courseTitle: session.courseTitle,
+      program: session.program,
+      level: session.level,
+      lecturerId: session.lecturerId,
+      lecturerName: session.lecturerName,
+      status: status,
+      attendanceDate: new Date(),
+      markedAt: new Date(),
+      location: location || 'QR Code Scan',
+      qrCodeData: null,
+      markingMethod: markingMethod || 'qr',
+      notes: null,
+      isVerified: true,
+      sessionId: sessionId,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+
+    const result = await db.collection('attendance_records').insertOne(attendanceRecord);
+
+    // 7. Update session statistics
+    await db.collection('attendance_sessions').updateOne(
+      { sessionId: sessionId },
+      { 
+        $inc: { 
+          'statistics.totalStudents': 1,
+          [`statistics.${status}Count`]: 1
+        },
+        $set: { updatedAt: new Date() }
+      }
+    );
+
+    await client.close();
+
+    res.json({
+      success: true,
+      message: 'Attendance marked successfully',
+      data: {
+        attendanceId: result.insertedId,
+        studentId: studentId,
+        courseCode: session.courseCode,
+        courseTitle: session.courseTitle,
+        sessionId: sessionId,
+        status: status,
+        markedAt: attendanceRecord.markedAt
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error marking attendance by session:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
+    });
+  }
+});
+
 // Get recent attendance sessions (must be last to avoid route conflicts)
 router.get('/sessions', async (req, res) => {
   try {
