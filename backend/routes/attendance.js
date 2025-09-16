@@ -2822,7 +2822,36 @@ router.post('/mark-by-session', async (req, res) => {
       });
     }
 
-    // 6. Create attendance record
+    // 6. If using GPS, validate student's location
+    if (markingMethod === 'gps' && location && session.location) {
+      const studentLat = location.latitude;
+      const studentLng = location.longitude;
+      const lecturerLat = session.location.latitude;
+      const lecturerLng = session.location.longitude;
+      const range = session.location.range || 50; // Default 50 meters
+
+      // Calculate distance between student and lecturer
+      const R = 6371e3; // Earth's radius in meters
+      const φ1 = studentLat * Math.PI/180;
+      const φ2 = lecturerLat * Math.PI/180;
+      const Δφ = (lecturerLat-studentLat) * Math.PI/180;
+      const Δλ = (lecturerLng-studentLng) * Math.PI/180;
+
+      const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                Math.cos(φ1) * Math.cos(φ2) *
+                Math.sin(Δλ/2) * Math.sin(Δλ/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      const distance = R * c;
+
+      if (distance > range) {
+        return res.status(400).json({
+          success: false,
+          error: `You are too far from the lecture venue (${Math.round(distance)}m away, max ${range}m allowed)`
+        });
+      }
+    }
+
+    // 7. Create attendance record
     const attendanceRecord = new Attendance({
       studentId: studentId,
       studentName: enrollment.studentFullName,
@@ -2836,9 +2865,9 @@ router.post('/mark-by-session', async (req, res) => {
       status: status,
       attendanceDate: new Date(),
       markedAt: new Date(),
-      location: location || 'QR Code Scan',
+      location: location || null,
       qrCodeData: null,
-      markingMethod: markingMethod || 'qr',
+      markingMethod: markingMethod || 'manual',
       notes: null,
       isVerified: true,
       sessionId: sessionId
@@ -2846,7 +2875,7 @@ router.post('/mark-by-session', async (req, res) => {
 
     await attendanceRecord.save();
 
-    // 7. Update session statistics
+    // 8. Update session statistics
     await session.updateStatistics();
 
     res.json({
@@ -2859,7 +2888,8 @@ router.post('/mark-by-session', async (req, res) => {
         courseTitle: session.courseTitle,
         sessionId: sessionId,
         status: status,
-        markedAt: attendanceRecord.markedAt
+        markedAt: attendanceRecord.markedAt,
+        location: location
       }
     });
 
