@@ -879,7 +879,7 @@ router.get('/top-performers/:courseCode', async (req, res) => {
     // Get attendance records for these students and course
     const attendanceRecords = await db.collection('attendance_records').find({
       studentId: { $in: studentIds },
-      courseId: course._id
+      courseCode: courseCode
     }).toArray();
     
     console.log('📊 Found', attendanceRecords.length, 'attendance records');
