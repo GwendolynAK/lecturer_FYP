@@ -3,6 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import { createServer } from "http";
 import { Server as SocketIOServer } from "socket.io";
+import mongoose from "mongoose";
 import catalogRoutes from "./routes/catalog.js";
 import healthRoutes from "./routes/health.js";
 import lecturerRouter from './routes/lecturer.js';
@@ -11,6 +12,7 @@ import studentsRouter from './routes/students.js';
 import studentAuthRouter from './routes/studentAuth.js';
 import coursesRouter from './routes/courses.js';
 import attendanceRouter from './routes/attendance.js';
+import sessionsRouter from './routes/sessions.js';
 
 // Load environment variables
 dotenv.config();
@@ -68,7 +70,7 @@ let isAdminSet = false; // Track if admin has been assigned
 
 // Create HTTP server and attach socket.io
 const httpServer = createServer(app);
-const io = new SocketIOServer(httpServer, {
+export const io = new SocketIOServer(httpServer, {
   cors: {
     origin: allowedOrigins,
     methods: ["GET", "POST"],
@@ -286,6 +288,7 @@ app.use('/api/courses', coursesRouter);
 app.use('/api/attendance', attendanceRouter);
 app.use("/api/catalog", catalogRoutes);
 app.use("/api/health", healthRoutes);
+app.use("/api/sessions", sessionsRouter);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
@@ -306,8 +309,6 @@ httpServer.listen(PORT, "0.0.0.0", () => {
 });
 
 // Database connection setup
-import mongoose from "mongoose";
-
 mongoose
   .connect(process.env.MONGO_URI, {
     dbName: process.env.DB_NAME,
