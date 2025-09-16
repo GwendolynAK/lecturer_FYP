@@ -2,6 +2,7 @@ import express from 'express';
 import { MongoClient, ObjectId } from 'mongodb';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
+import { Attendance, AttendanceSession, CourseEnrollment } from '../models/index.js';
 
 dotenv.config();
 
